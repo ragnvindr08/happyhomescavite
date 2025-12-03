@@ -1,0 +1,71 @@
+===========================================
+GIT SETUP AND PUSH INSTRUCTIONS
+===========================================
+
+OPTION 1: INSTALL GIT (RECOMMENDED)
+------------------------------------
+1. Download Git for Windows:
+   https://git-scm.com/download/win
+
+2. Run the installer and make sure to check:
+   ✓ "Add Git to PATH" option during installation
+
+3. After installation, RESTART your PowerShell/terminal
+
+4. Then run these commands:
+   
+   git init
+   git remote add origin https://github.com/ragnvindr08/happyhomescavite.git
+   git add .
+   git commit -m "Deploy to Render: Add production configuration"
+   git branch -M main
+   git push -u origin main
+
+
+OPTION 2: USE GITHUB DESKTOP
+------------------------------------
+1. Download GitHub Desktop:
+   https://desktop.github.com/
+
+2. Install and sign in with your GitHub account
+
+3. In GitHub Desktop:
+   - File > Add Local Repository
+   - Select this folder: C:\Users\Admin\Documents\CAPSTONE-03\Capstone Final Oct\Capstone Final\happy_homes
+   - Click "Publish repository"
+   - Repository name: happyhomescavite
+   - Make sure it's set to: ragnvindr08/happyhomescavite
+
+
+OPTION 3: MANUAL UPLOAD (If Git not available)
+------------------------------------
+1. Go to: https://github.com/ragnvindr08/happyhomescavite
+
+2. If repository doesn't exist, create it on GitHub first
+
+3. Use GitHub's web interface to upload files:
+   - Click "uploading an existing file"
+   - Drag and drop your project files
+   - Commit the changes
+
+NOTE: This method is slower but works without Git installed.
+
+
+QUICK CHECK: Is Git Installed?
+------------------------------------
+Run this in PowerShell:
+   where.exe git
+
+If it shows a path, Git is installed but not in PATH.
+If it shows nothing, Git is not installed.
+
+
+AFTER PUSHING TO GITHUB:
+------------------------------------
+1. Go to Render.com
+2. Connect your GitHub repository
+3. Deploy backend and frontend as separate services
+4. Set environment variables as described in the deployment guide
+
+===========================================
+

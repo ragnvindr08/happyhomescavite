@@ -338,6 +338,8 @@ body .hero-section * {
   overflow: hidden;
   border-radius: 20px; /* optional rounded corners */
   box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+  z-index: 1; /* Ensure proper stacking */
+  isolation: isolate; /* Create new stacking context */
 }
 
 .map-responsive iframe {
@@ -347,10 +349,17 @@ body .hero-section * {
   width: 100%;
   height: 100%;
   border: 0;
+  z-index: 1;
+  pointer-events: auto; /* Allow map interactions */
 }
 
 /* Additional font coverage for Contact and NewsAlerts pages */
 /* Contact page specific */
+.contact-grid {
+  position: relative;
+  z-index: 1;
+}
+
 .contact-grid,
 .contact-grid *,
 .contact-grid > div,
@@ -360,6 +369,42 @@ body .hero-section * {
 .map-container,
 .map-container * {
   font-family: 'Roboto Condensed', sans-serif !important;
+}
+
+/* Ensure form card is above map */
+.contact-grid .form-card {
+  position: relative;
+  z-index: 2;
+}
+
+/* Ensure contact info section is properly stacked */
+.contact-grid > div:last-child {
+  position: relative;
+  z-index: 1;
+}
+
+/* Prevent overlay issues - ensure proper stacking context */
+.contact-grid > div {
+  position: relative;
+}
+
+/* Fix any potential overlay blocking interactions */
+.contact-grid .form-card *,
+.contact-grid .form-card input,
+.contact-grid .form-card select,
+.contact-grid .form-card textarea,
+.contact-grid .form-card button {
+  position: relative;
+  z-index: 1;
+}
+
+/* Ensure map doesn't create overlay issues */
+.map-responsive {
+  pointer-events: auto;
+}
+
+.map-responsive iframe {
+  pointer-events: auto;
 }
 
 /* NewsAlerts page modals and components */

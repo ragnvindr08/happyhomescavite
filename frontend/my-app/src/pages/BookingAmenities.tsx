@@ -912,7 +912,16 @@ const BookingAmenities: React.FC = () => {
               {showAdminTable ? 'Show Calendar' : 'Show Admin Table'}
             </button>
             <button 
-              onClick={() => setShowMaintenanceManager(!showMaintenanceManager)}
+              onClick={() => {
+                if (showMaintenanceManager) {
+                  // If maintenance is shown, hide it
+                  setShowMaintenanceManager(false);
+                } else {
+                  // If maintenance is hidden, show it and hide facility
+                  setShowMaintenanceManager(true);
+                  setShowAdminBookingForm(false);
+                }
+              }}
               style={{
                 padding: '10px 20px',
                 backgroundColor: '#ff6b6b',
@@ -925,7 +934,16 @@ const BookingAmenities: React.FC = () => {
               {showMaintenanceManager ? 'Hide' : 'Manage'} Maintenance
             </button>
             <button 
-              onClick={() => setShowAdminBookingForm(!showAdminBookingForm)}
+              onClick={() => {
+                if (showAdminBookingForm) {
+                  // If facility is shown, hide it
+                  setShowAdminBookingForm(false);
+                } else {
+                  // If facility is hidden, show it and hide maintenance
+                  setShowAdminBookingForm(true);
+                  setShowMaintenanceManager(false);
+                }
+              }}
               style={{
                 padding: '10px 20px',
                 backgroundColor: '#2e6F40',

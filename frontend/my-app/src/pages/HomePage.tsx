@@ -13,6 +13,9 @@ import house123Image from '../images/house123.png';
 import service1Image from '../images/service-1.png';
 import service2Image from '../images/service-2.png';
 import service3Image from '../images/service-3.png';
+import BuildIcon from '@mui/icons-material/Build';
+import PaymentIcon from '@mui/icons-material/Payment';
+import PeopleIcon from '@mui/icons-material/People';
 
 interface User {
   id: number;
@@ -21,9 +24,11 @@ interface User {
   last_name: string;
   email: string;
   is_staff: boolean;
+  is_verified?: boolean;
   profile?: {
     contact_number?: string;
     profile_image?: string;
+    is_verified?: boolean;
   };
 }
 
@@ -93,26 +98,16 @@ interface MediaItem {
   date?: string;
 }
 
-interface House {
+interface EmergencyContact {
   id: number;
-  title: string;
-  description: string;
-  price: number;
-  location: string;
-  listing_type?: 'sale' | 'rent';
-  image?: string;
+  name: string;
+  phone: string;
+  description?: string;
+  category: string;
+  is_active: boolean;
+  order: number;
   created_at?: string;
-}
-
-interface Booking {
-  id: number;
-  facility_id: number;
-  facility_name: string;
-  date: string;
-  start_time: string;
-  end_time: string;
-  status: "pending" | "approved" | "rejected";
-  user_name?: string;
+  updated_at?: string;
 }
 
 interface Pin {
@@ -141,8 +136,7 @@ const HomePage: React.FC = () => {
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
   const [blogStories, setBlogStories] = useState<BlogStory[]>([]);
   const [blogPosts, setBlogPosts] = useState<Post[]>([]);
-  const [houses, setHouses] = useState<House[]>([]);
-  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [emergencyContacts, setEmergencyContacts] = useState<EmergencyContact[]>([]);
   const [pins, setPins] = useState<Pin[]>([]);
   const [sectionLoading, setSectionLoading] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
@@ -156,13 +150,13 @@ const HomePage: React.FC = () => {
   const [commentLoading, setCommentLoading] = useState(false);
   const [fetchingComments, setFetchingComments] = useState(false);
   const [currentAboutImageIndex, setCurrentAboutImageIndex] = useState(0);
+  const [showScrollToTop, setShowScrollToTop] = useState(false);
   
   // Modal states for bulletin board items
   const [selectedBulletinPost, setSelectedBulletinPost] = useState<Post | null>(null);
   const [selectedBulletinNews, setSelectedBulletinNews] = useState<NewsItem | null>(null);
   const [selectedBulletinBlog, setSelectedBulletinBlog] = useState<Post | null>(null);
-  const [selectedBulletinHouse, setSelectedBulletinHouse] = useState<House | null>(null);
-  const [selectedBulletinBooking, setSelectedBulletinBooking] = useState<Booking | null>(null);
+  const [selectedEmergencyContact, setSelectedEmergencyContact] = useState<EmergencyContact | null>(null);
   const [selectedBulletinPin, setSelectedBulletinPin] = useState<Pin | null>(null);
   
   // Array of about us images
@@ -219,6 +213,26 @@ const HomePage: React.FC = () => {
         navigate('/login');
       });
   }, [navigate]);
+
+  // Handle scroll to top button visibility
+  useEffect(() => {
+    const handleScroll = () => {
+      // Show button when user scrolls down more than 300px
+      const scrollPosition = window.scrollY || document.documentElement.scrollTop;
+      setShowScrollToTop(scrollPosition > 300);
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Scroll to top function
+  const scrollToTop = () => {
+    window.scrollTo({
+      top: 0,
+      behavior: 'smooth'
+    });
+  };
 
   useEffect(() => {
     const token = getToken();
@@ -337,20 +351,15 @@ const HomePage: React.FC = () => {
         const alertsRes = await fetch('http://127.0.0.1:8000/api/alerts/', { headers });
         const alertsData: AlertItem[] = alertsRes.ok ? await alertsRes.json() : [];
 
-        // Fetch houses with images for media gallery
-        const housesRes = await fetch('http://127.0.0.1:8000/api/guest/houses/');
-        const housesData = housesRes.ok ? await housesRes.json() : [];
-        setHouses(housesData); // Store houses for Bulletin Board
+        // Fetch emergency contacts
+        const emergencyContactsRes = await fetch('http://127.0.0.1:8000/api/emergency-contacts/?is_active=true', { headers });
+        const emergencyContactsData = emergencyContactsRes.ok ? await emergencyContactsRes.json() : [];
+        setEmergencyContacts(Array.isArray(emergencyContactsData) ? emergencyContactsData : (emergencyContactsData.results || []));
 
         // Fetch blog posts
         const blogPostsRes = await fetch('http://127.0.0.1:8000/api/posts/', { headers });
         const blogPostsData: Post[] = blogPostsRes.ok ? await blogPostsRes.json() : [];
         setBlogPosts(blogPostsData); // Store all blog posts for Bulletin Board
-
-        // Fetch bookings
-        const bookingsRes = await fetch('http://127.0.0.1:8000/api/bookings/', { headers });
-        const bookingsData: Booking[] = bookingsRes.ok ? await bookingsRes.json() : [];
-        setBookings(bookingsData); // Store bookings for Bulletin Board
 
         // Fetch pins
         const pinsRes = await fetch('http://127.0.0.1:8000/api/pins/');
@@ -404,7 +413,7 @@ const HomePage: React.FC = () => {
         ];
 
         // Convert all blog posts to BlogStory format
-        const convertedBlogs: BlogStory[] = blogPostsData.map((post) => ({
+        const convertedBlogs: BlogStory[] = blogPostsData.map((post: any) => ({
           id: post.id,
           title: post.title,
           content: post.body,
@@ -412,7 +421,9 @@ const HomePage: React.FC = () => {
           date: new Date().toISOString(),
           category: 'Community',
           readTime: `${Math.ceil(post.body.length / 200)} min read`,
-          image: house123Image,
+          image: post.image 
+            ? (post.image.startsWith('http') ? post.image : `http://127.0.0.1:8000${post.image}`)
+            : house123Image,
           isRealPost: true, // Mark as real post from database
         }));
         
@@ -432,7 +443,9 @@ const HomePage: React.FC = () => {
             id: item.id,
             title: item.title,
             description: item.description || '',
-            imageUrl: item.media_url || '',
+            imageUrl: item.media_url 
+              ? (item.media_url.startsWith('http') ? item.media_url : `http://127.0.0.1:8000${item.media_url}`)
+              : '',
             type: item.media_type as 'image' | 'video',
             date: item.created_at || new Date().toISOString(),
           }));
@@ -510,6 +523,7 @@ const HomePage: React.FC = () => {
       return () => clearInterval(intervalId);
     } else {
       setComments([]);
+      return undefined;
     }
   }, [selectedBlog]);
 
@@ -695,8 +709,27 @@ const HomePage: React.FC = () => {
         {/* Welcome Message Section */}
         <div className="welcome-message-section">
           <div className="welcome-message-header">
+            <div style={{ 
+              fontSize: '0.75rem', 
+              color: '#666', 
+              marginBottom: '10px',
+              fontFamily: "'Courier New', monospace",
+              textTransform: 'uppercase',
+              letterSpacing: '2px'
+            }}>
+              {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            </div>
             <h2 className="welcome-message-heading">About <strong>Happy Homes</strong></h2>
             <div className="welcome-divider"></div>
+            <div style={{ 
+              fontSize: '0.7rem', 
+              color: '#666', 
+              marginTop: '10px',
+              fontFamily: "'Courier New', monospace",
+              fontStyle: 'italic'
+            }}>
+              Community News & Information
+            </div>
           </div>
           <div style={{
             display: 'flex',
@@ -758,13 +791,14 @@ const HomePage: React.FC = () => {
                 width: '100%',
                 maxWidth: '600px',
               }}>
-                {/* Image Container */}
+                {/* Image Container - Newspaper Style */}
                 <div style={{
                   position: 'relative',
                   width: '100%',
-                  borderRadius: '12px',
+                  borderRadius: '0',
                   overflow: 'hidden',
-                  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.15)',
+                  border: '3px solid #000',
+                  boxShadow: '2px 2px 0px rgba(0, 0, 0, 0.1), 4px 4px 0px rgba(0, 0, 0, 0.05)',
                 }}>
                   <img
                     src={aboutUsImages[currentAboutImageIndex % aboutUsImages.length]}
@@ -781,7 +815,7 @@ const HomePage: React.FC = () => {
                     }}
                   />
                   
-                  {/* Left Arrow */}
+                  {/* Left Arrow - Newspaper Style */}
                   <button
                     onClick={() => {
                       setCurrentAboutImageIndex((prev) => 
@@ -793,9 +827,9 @@ const HomePage: React.FC = () => {
                       left: '15px',
                       top: '50%',
                       transform: 'translateY(-50%)',
-                      backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                      border: 'none',
-                      borderRadius: '50%',
+                      backgroundColor: '#000',
+                      border: '2px solid #000',
+                      borderRadius: '0',
                       width: '45px',
                       height: '45px',
                       display: 'flex',
@@ -803,27 +837,29 @@ const HomePage: React.FC = () => {
                       justifyContent: 'center',
                       cursor: 'pointer',
                       fontSize: '20px',
-                      color: '#4CAF50',
-                      boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)',
+                      color: '#fff',
+                      boxShadow: '2px 2px 0px rgba(0, 0, 0, 0.2)',
                       transition: 'all 0.3s ease',
                       zIndex: 10,
+                      fontFamily: "'Times New Roman', serif",
+                      fontWeight: 'bold',
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = '#4CAF50';
-                      e.currentTarget.style.color = 'white';
-                      e.currentTarget.style.transform = 'translateY(-50%) scale(1.1)';
+                      e.currentTarget.style.backgroundColor = '#333';
+                      e.currentTarget.style.transform = 'translateY(-50%) translateX(-2px)';
+                      e.currentTarget.style.boxShadow = '3px 3px 0px rgba(0, 0, 0, 0.3)';
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
-                      e.currentTarget.style.color = '#4CAF50';
-                      e.currentTarget.style.transform = 'translateY(-50%) scale(1)';
+                      e.currentTarget.style.backgroundColor = '#000';
+                      e.currentTarget.style.transform = 'translateY(-50%)';
+                      e.currentTarget.style.boxShadow = '2px 2px 0px rgba(0, 0, 0, 0.2)';
                     }}
                     aria-label="Previous image"
                   >
                     ←
                   </button>
 
-                  {/* Right Arrow */}
+                  {/* Right Arrow - Newspaper Style */}
                   <button
                     onClick={() => {
                       setCurrentAboutImageIndex((prev) => 
@@ -835,9 +871,9 @@ const HomePage: React.FC = () => {
                       right: '15px',
                       top: '50%',
                       transform: 'translateY(-50%)',
-                      backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                      border: 'none',
-                      borderRadius: '50%',
+                      backgroundColor: '#000',
+                      border: '2px solid #000',
+                      borderRadius: '0',
                       width: '45px',
                       height: '45px',
                       display: 'flex',
@@ -845,27 +881,29 @@ const HomePage: React.FC = () => {
                       justifyContent: 'center',
                       cursor: 'pointer',
                       fontSize: '20px',
-                      color: '#4CAF50',
-                      boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)',
+                      color: '#fff',
+                      boxShadow: '2px 2px 0px rgba(0, 0, 0, 0.2)',
                       transition: 'all 0.3s ease',
                       zIndex: 10,
+                      fontFamily: "'Times New Roman', serif",
+                      fontWeight: 'bold',
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = '#4CAF50';
-                      e.currentTarget.style.color = 'white';
-                      e.currentTarget.style.transform = 'translateY(-50%) scale(1.1)';
+                      e.currentTarget.style.backgroundColor = '#333';
+                      e.currentTarget.style.transform = 'translateY(-50%) translateX(2px)';
+                      e.currentTarget.style.boxShadow = '3px 3px 0px rgba(0, 0, 0, 0.3)';
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
-                      e.currentTarget.style.color = '#4CAF50';
-                      e.currentTarget.style.transform = 'translateY(-50%) scale(1)';
+                      e.currentTarget.style.backgroundColor = '#000';
+                      e.currentTarget.style.transform = 'translateY(-50%)';
+                      e.currentTarget.style.boxShadow = '2px 2px 0px rgba(0, 0, 0, 0.2)';
                     }}
                     aria-label="Next image"
                   >
                     →
                   </button>
 
-                  {/* Image Indicators (Dots) */}
+                  {/* Image Indicators (Dots) - Newspaper Style */}
                   <div style={{
                     position: 'absolute',
                     bottom: '15px',
@@ -882,9 +920,9 @@ const HomePage: React.FC = () => {
                         style={{
                           width: currentAboutImageIndex === index ? '24px' : '10px',
                           height: '10px',
-                          borderRadius: '5px',
-                          border: 'none',
-                          backgroundColor: currentAboutImageIndex === index ? '#4CAF50' : 'rgba(255, 255, 255, 0.6)',
+                          borderRadius: '0',
+                          border: '1px solid #000',
+                          backgroundColor: currentAboutImageIndex === index ? '#000' : '#fff',
                           cursor: 'pointer',
                           transition: 'all 0.3s ease',
                           padding: 0,
@@ -896,17 +934,6 @@ const HomePage: React.FC = () => {
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-
-        {/* Advertisement Banner 1 */}
-        <div className="advertisement-banner" onClick={() => navigate('/house-sales')}>
-          <div className="ad-content">
-            <div className="ad-text">
-              <h3 className="ad-title">Find Your Dream Home Today!</h3>
-              <p className="ad-description">Browse our exclusive listings and discover the perfect home for you and your family</p>
-            </div>
-            <button className="ad-button">Buy Now →</button>
           </div>
         </div>
 
@@ -959,24 +986,33 @@ const HomePage: React.FC = () => {
           </div>
         </div>
 
-        {/* Advertisement Banner 2 */}
-        <div className="advertisement-banner ad-banner-2" onClick={() => navigate('/calendar')}>
-          <div className="ad-content">
-            <div className="ad-text">
-              <h3 className="ad-title">Book Community Amenities</h3>
-              <p className="ad-description">Reserve function halls, pools, and sports facilities for your events</p>
-            </div>
-            <button className="ad-button">Book Now →</button>
-          </div>
-        </div>
-
-        {/* Bulletin Board Section - Modern Compact Design */}
+        {/* Bulletin Board Section - Newspaper Style */}
         <div className="section-container bulletin-board-container" style={{ 
-          maxWidth: '100%', 
-          margin: '0 auto'
+          maxWidth: '1200px', 
+          margin: '0 auto',
+          fontFamily: "'Georgia', 'Times New Roman', serif"
         }}>
           <div className="bulletin-board-header">
-            <h2 className="bulletin-board-title">Bulletin Board</h2>
+            <div style={{ 
+              fontSize: '0.75rem', 
+              color: '#666', 
+              marginBottom: '10px',
+              fontFamily: "'Courier New', monospace",
+              textTransform: 'uppercase',
+              letterSpacing: '2px'
+            }}>
+              {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            </div>
+            <h2 className="bulletin-board-title">Community Bulletin</h2>
+            <div style={{ 
+              fontSize: '0.7rem', 
+              color: '#666', 
+              marginTop: '10px',
+              fontFamily: "'Courier New', monospace",
+              fontStyle: 'italic'
+            }}>
+              Your Neighborhood News & Updates
+            </div>
           </div>
 
           {sectionLoading ? (
@@ -1046,172 +1082,63 @@ const HomePage: React.FC = () => {
                 )}
               </section>
 
-              {/* Row 3: Blog Stories */}
+              {/* Row 4: Emergency Contacts */}
               <section className="bulletin-section">
-                <h3 className="bulletin-section-title">Blog Stories</h3>
-                {blogPosts.length > 0 ? (
+                <h3 className="bulletin-section-title">Emergency Contacts</h3>
+                {emergencyContacts.length > 0 ? (
                   <div className="bulletin-board-grid">
-                    {blogPosts.map((post: Post, index) => (
+                    {emergencyContacts.map((contact: EmergencyContact, index) => (
                       <article 
-                        key={post.id} 
+                        key={contact.id} 
                         className="bulletin-card bulletin-card-clickable"
                         style={{ '--card-index': index } as React.CSSProperties}
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          setSelectedBulletinBlog(post);
+                          setSelectedEmergencyContact(contact);
                         }}
                       >
-                        <h4 className="bulletin-card-title">{post.title}</h4>
-                        <p className="bulletin-card-content" style={{ whiteSpace: 'pre-wrap' }}>
-                          {post.body}
-                        </p>
-                      </article>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="bulletin-empty">No blog stories available at the moment.</p>
-                )}
-              </section>
-
-              {/* Row 4: Houses */}
-              <section className="bulletin-section">
-                <h3 className="bulletin-section-title">Houses</h3>
-                {houses.length > 0 ? (
-                  <div className="bulletin-board-grid">
-                    {houses.map((house: House, index) => (
-                      <article 
-                        key={house.id} 
-                        className="bulletin-house-card bulletin-card-clickable"
-                        style={{ '--card-index': index } as React.CSSProperties}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setSelectedBulletinHouse(house);
-                        }}
-                      >
-                        {house.image && (
-                          <img 
-                            src={house.image.startsWith('http') ? house.image : `http://127.0.0.1:8000${house.image}`}
-                            alt={house.title}
-                            className="bulletin-house-image"
-                          />
-                        )}
-                        <div className="bulletin-house-content">
-                          <h4 className="bulletin-house-title">{house.title}</h4>
-                          <p className="bulletin-house-price">₱{Number(house.price).toLocaleString()}</p>
-                          <p className="bulletin-house-location">
-                            {house.location}
-                          </p>
-                          {house.listing_type && (
-                            <span className="bulletin-card-tag">
-                              {house.listing_type === 'sale' ? 'For Sale' : 'For Rent'}
+                        <div className="bulletin-card-content" style={{ padding: '20px' }}>
+                          <h4 className="bulletin-card-title" style={{ marginBottom: '10px', color: '#2e6F40' }}>
+                            {contact.name}
+                          </h4>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                            <span style={{ fontSize: '18px', fontWeight: 'bold', color: '#2e6F40' }}>
+                              <a href={`tel:${contact.phone}`} style={{ color: '#2e6F40', textDecoration: 'none' }}>
+                                {contact.phone}
+                              </a>
                             </span>
+                          </div>
+                          {contact.category && (
+                            <span className="bulletin-card-tag" style={{ 
+                              background: contact.category === 'police' ? '#2196F3' : 
+                                         contact.category === 'fire' ? '#f44336' : 
+                                         contact.category === 'medical' ? '#4CAF50' : 
+                                         '#9e9e9e',
+                              color: 'white',
+                              padding: '4px 12px',
+                              borderRadius: '4px',
+                              fontSize: '12px',
+                              display: 'inline-block',
+                              marginTop: '8px'
+                            }}>
+                              {contact.category.charAt(0).toUpperCase() + contact.category.slice(1)}
+                            </span>
+                          )}
+                          {contact.description && (
+                            <p style={{ marginTop: '10px', fontSize: '14px', color: '#666' }}>
+                              {contact.description.length > 100 ? contact.description.substring(0, 100) + '...' : contact.description}
+                            </p>
                           )}
                         </div>
                       </article>
                     ))}
                   </div>
                 ) : (
-                  <p className="bulletin-empty">No houses available at the moment.</p>
+                  <p className="bulletin-empty">No emergency contacts available at the moment.</p>
                 )}
               </section>
 
-              {/* Row 5: Bookings */}
-              <section className="bulletin-section">
-                <h3 className="bulletin-section-title">Bookings</h3>
-                {bookings.length > 0 ? (
-                  <div className="bulletin-board-grid">
-                    {bookings.map((booking: Booking, index) => (
-                      <article 
-                        key={booking.id} 
-                        className="bulletin-card bulletin-card-clickable"
-                        style={{ '--card-index': index } as React.CSSProperties}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setSelectedBulletinBooking(booking);
-                        }}
-                      >
-                        <h4 className="bulletin-card-title">{booking.facility_name}</h4>
-                        <p className="bulletin-card-content">
-                          <strong>Date:</strong> {new Date(booking.date).toLocaleDateString('en-US', { 
-                            month: 'short', 
-                            day: 'numeric', 
-                            year: 'numeric' 
-                          })}
-                        </p>
-                        <p className="bulletin-card-content">
-                          <strong>Time:</strong> {booking.start_time} - {booking.end_time}
-                        </p>
-                        {booking.user_name && (
-                          <p className="bulletin-card-content">
-                            <strong>Booked by:</strong> {booking.user_name}
-                          </p>
-                        )}
-                        <span className="bulletin-card-tag">
-                          {booking.status.charAt(0).toUpperCase() + booking.status.slice(1)}
-                        </span>
-                      </article>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="bulletin-empty">No bookings available at the moment.</p>
-                )}
-              </section>
-
-              {/* Row 6: Pins */}
-              <section className="bulletin-section">
-                <h3 className="bulletin-section-title">Pins</h3>
-                {pins.length > 0 ? (
-                  <div className="bulletin-board-grid">
-                    {pins.map((pin: Pin, index) => (
-                      <article 
-                        key={pin.id} 
-                        className="bulletin-card bulletin-card-clickable"
-                        style={{ '--card-index': index } as React.CSSProperties}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setSelectedBulletinPin(pin);
-                        }}
-                      >
-                        <h4 className="bulletin-card-title">{pin.name}</h4>
-                        {pin.description && (
-                          <p className="bulletin-card-content">{pin.description}</p>
-                        )}
-                        <p className="bulletin-card-content">
-                          <strong>Location:</strong> {pin.latitude.toFixed(6)}, {pin.longitude.toFixed(6)}
-                        </p>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px' }}>
-                          {pin.status && (
-                            <span className="bulletin-card-tag">
-                              {pin.status.charAt(0).toUpperCase() + pin.status.slice(1)}
-                            </span>
-                          )}
-                          {pin.occupant && (
-                            <span className="bulletin-card-content" style={{ fontSize: '0.85rem', margin: 0 }}>
-                              <strong>Occupant:</strong> {pin.occupant}
-                            </span>
-                          )}
-                        </div>
-                        {pin.price && (
-                          <p className="bulletin-card-content" style={{ marginTop: '8px', fontWeight: '600', color: '#4CAF50' }}>
-                            Price: ₱{pin.price}
-                          </p>
-                        )}
-                        {pin.square_meter && (
-                          <p className="bulletin-card-content" style={{ marginTop: '6px', fontSize: '0.85rem' }}>
-                            <strong>Size:</strong> {pin.square_meter} m²
-                          </p>
-                        )}
-                      </article>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="bulletin-empty">No pins available at the moment.</p>
-                )}
-              </section>
             </div>
           )}
         </div>
@@ -1254,58 +1181,49 @@ const HomePage: React.FC = () => {
           </div>
         )}
 
-        {/* Blog Post Modal */}
-        {selectedBulletinBlog && (
-          <div className="bulletin-modal-overlay" onClick={() => setSelectedBulletinBlog(null)}>
-            <div className="bulletin-modal-content" onClick={(e) => e.stopPropagation()}>
-              <button className="bulletin-modal-close" onClick={() => setSelectedBulletinBlog(null)}>×</button>
-              <h2 className="bulletin-modal-title">{selectedBulletinBlog.title}</h2>
-              <div className="bulletin-modal-body">
-                <p style={{ whiteSpace: 'pre-wrap', lineHeight: '1.8' }}>{selectedBulletinBlog.body}</p>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* House Modal */}
-        {selectedBulletinHouse && (
-          <div className="bulletin-modal-overlay" onClick={() => setSelectedBulletinHouse(null)}>
+        {selectedEmergencyContact && (
+          <div className="bulletin-modal-overlay" onClick={() => setSelectedEmergencyContact(null)}>
             <div className="bulletin-modal-content" onClick={(e) => e.stopPropagation()}>
-              <button className="bulletin-modal-close" onClick={() => setSelectedBulletinHouse(null)}>×</button>
-              {selectedBulletinHouse.image && (
-                <div className="bulletin-modal-image">
-                  <img 
-                    src={selectedBulletinHouse.image.startsWith('http') 
-                      ? selectedBulletinHouse.image 
-                      : `http://127.0.0.1:8000${selectedBulletinHouse.image}`}
-                    alt={selectedBulletinHouse.title}
-                  />
-                </div>
-              )}
-              <h2 className="bulletin-modal-title">{selectedBulletinHouse.title}</h2>
+              <button className="bulletin-modal-close" onClick={() => setSelectedEmergencyContact(null)}>×</button>
+              <h2 className="bulletin-modal-title">{selectedEmergencyContact.name}</h2>
               <div className="bulletin-modal-body">
                 <div className="bulletin-modal-details">
                   <div className="bulletin-modal-detail-item">
-                    <strong>Price:</strong> 
-                    <span className="bulletin-modal-price">₱{Number(selectedBulletinHouse.price).toLocaleString()}</span>
-                    {selectedBulletinHouse.listing_type === 'rent' && <span>/Month</span>}
+                    <strong>Phone Number:</strong> 
+                    <a href={`tel:${selectedEmergencyContact.phone}`} style={{ 
+                      fontSize: '20px', 
+                      color: '#2e6F40', 
+                      textDecoration: 'none',
+                      fontWeight: 'bold',
+                      marginLeft: '10px'
+                    }}>
+                      {selectedEmergencyContact.phone}
+                    </a>
                   </div>
-                  <div className="bulletin-modal-detail-item">
-                    <strong>Location:</strong> {selectedBulletinHouse.location}
-                  </div>
-                  {selectedBulletinHouse.listing_type && (
+                  {selectedEmergencyContact.category && (
                     <div className="bulletin-modal-detail-item">
-                      <strong>Type:</strong> 
-                      <span className="bulletin-card-tag">
-                        {selectedBulletinHouse.listing_type === 'sale' ? 'For Sale' : 'For Rent'}
+                      <strong>Category:</strong> 
+                      <span className="bulletin-card-tag" style={{ 
+                        background: selectedEmergencyContact.category === 'police' ? '#2196F3' : 
+                                   selectedEmergencyContact.category === 'fire' ? '#f44336' : 
+                                   selectedEmergencyContact.category === 'medical' ? '#4CAF50' : 
+                                   '#9e9e9e',
+                        color: 'white',
+                        padding: '6px 16px',
+                        borderRadius: '4px',
+                        fontSize: '14px',
+                        marginLeft: '10px'
+                      }}>
+                        {selectedEmergencyContact.category.charAt(0).toUpperCase() + selectedEmergencyContact.category.slice(1)}
                       </span>
                     </div>
                   )}
-                  {selectedBulletinHouse.description && (
+                  {selectedEmergencyContact.description && (
                     <div className="bulletin-modal-detail-item" style={{ marginTop: '20px' }}>
                       <strong>Description:</strong>
                       <p style={{ marginTop: '10px', whiteSpace: 'pre-wrap', lineHeight: '1.8' }}>
-                        {selectedBulletinHouse.description}
+                        {selectedEmergencyContact.description}
                       </p>
                     </div>
                   )}
@@ -1315,85 +1233,52 @@ const HomePage: React.FC = () => {
           </div>
         )}
 
-        {/* Booking Modal */}
-        {selectedBulletinBooking && (
-          <div className="bulletin-modal-overlay" onClick={() => setSelectedBulletinBooking(null)}>
-            <div className="bulletin-modal-content" onClick={(e) => e.stopPropagation()}>
-              <button className="bulletin-modal-close" onClick={() => setSelectedBulletinBooking(null)}>×</button>
-              <h2 className="bulletin-modal-title">{selectedBulletinBooking.facility_name}</h2>
-              <div className="bulletin-modal-body">
-                <div className="bulletin-modal-details">
-                  <div className="bulletin-modal-detail-item">
-                    <strong>Date:</strong> {new Date(selectedBulletinBooking.date).toLocaleDateString('en-US', { 
-                      month: 'long', 
-                      day: 'numeric', 
-                      year: 'numeric',
-                      weekday: 'long'
-                    })}
-                  </div>
-                  <div className="bulletin-modal-detail-item">
-                    <strong>Time:</strong> {selectedBulletinBooking.start_time} - {selectedBulletinBooking.end_time}
-                  </div>
-                  {selectedBulletinBooking.user_name && (
-                    <div className="bulletin-modal-detail-item">
-                      <strong>Booked by:</strong> {selectedBulletinBooking.user_name}
-                    </div>
-                  )}
-                  <div className="bulletin-modal-detail-item">
-                    <strong>Status:</strong> 
-                    <span className="bulletin-card-tag" style={{ marginLeft: '10px' }}>
-                      {selectedBulletinBooking.status.charAt(0).toUpperCase() + selectedBulletinBooking.status.slice(1)}
-                    </span>
-                  </div>
+
+        {/* Services Section 2 - Maintenance, Billing, Visitors - Only for verified homeowners */}
+        {user && !user.is_staff && (user.is_verified || user.profile?.is_verified) && (
+          <div className="services-main-section">
+            <div className="section-header-modern">
+              <span className="section-label">Resident Services</span>
+              <h2 className="section-heading">Our Services</h2>
+            </div>
+            <div className="services-grid-modern">
+              <div 
+                className="service-item service-clickable"
+                onClick={() => navigate('/maintenance-request')}
+              >
+                <div className="service-image-box">
+                  <BuildIcon sx={{ fontSize: 64, color: '#2e6F40' }} />
+                </div>
+                <div className="service-content">
+                  <h3>Maintenance</h3>
+                  <p>Request professional maintenance services for your home. From carpentry to air conditioning repair.</p>
+                  <span className="service-link">Request Service →</span>
                 </div>
               </div>
-            </div>
-          </div>
-        )}
-
-        {/* Pin Modal */}
-        {selectedBulletinPin && (
-          <div className="bulletin-modal-overlay" onClick={() => setSelectedBulletinPin(null)}>
-            <div className="bulletin-modal-content" onClick={(e) => e.stopPropagation()}>
-              <button className="bulletin-modal-close" onClick={() => setSelectedBulletinPin(null)}>×</button>
-              <h2 className="bulletin-modal-title">{selectedBulletinPin.name}</h2>
-              <div className="bulletin-modal-body">
-                <div className="bulletin-modal-details">
-                  {selectedBulletinPin.description && (
-                    <div className="bulletin-modal-detail-item">
-                      <strong>Description:</strong>
-                      <p style={{ marginTop: '10px', whiteSpace: 'pre-wrap', lineHeight: '1.8' }}>
-                        {selectedBulletinPin.description}
-                      </p>
-                    </div>
-                  )}
-                  <div className="bulletin-modal-detail-item">
-                    <strong>Location:</strong> {selectedBulletinPin.latitude.toFixed(6)}, {selectedBulletinPin.longitude.toFixed(6)}
-                  </div>
-                  {selectedBulletinPin.status && (
-                    <div className="bulletin-modal-detail-item">
-                      <strong>Status:</strong> 
-                      <span className="bulletin-card-tag" style={{ marginLeft: '10px' }}>
-                        {selectedBulletinPin.status.charAt(0).toUpperCase() + selectedBulletinPin.status.slice(1)}
-                      </span>
-                    </div>
-                  )}
-                  {selectedBulletinPin.occupant && (
-                    <div className="bulletin-modal-detail-item">
-                      <strong>Occupant:</strong> {selectedBulletinPin.occupant}
-                    </div>
-                  )}
-                  {selectedBulletinPin.price && (
-                    <div className="bulletin-modal-detail-item">
-                      <strong>Price:</strong> 
-                      <span className="bulletin-modal-price">₱{selectedBulletinPin.price}</span>
-                    </div>
-                  )}
-                  {selectedBulletinPin.square_meter && (
-                    <div className="bulletin-modal-detail-item">
-                      <strong>Size:</strong> {selectedBulletinPin.square_meter} m²
-                    </div>
-                  )}
+              <div 
+                className="service-item service-clickable"
+                onClick={() => navigate('/billing')}
+              >
+                <div className="service-image-box">
+                  <PaymentIcon sx={{ fontSize: 64, color: '#2e6F40' }} />
+                </div>
+                <div className="service-content">
+                  <h3>Billing</h3>
+                  <p>Manage your bills and service fees. View payment history and upload receipts easily.</p>
+                  <span className="service-link">View Billing →</span>
+                </div>
+              </div>
+              <div 
+                className="service-item service-clickable"
+                onClick={() => navigate('/resident-dashboard')}
+              >
+                <div className="service-image-box">
+                  <PeopleIcon sx={{ fontSize: 64, color: '#2e6F40' }} />
+                </div>
+                <div className="service-content">
+                  <h3>Visitors</h3>
+                  <p>Manage your visitors. Generate PINs, approve requests, and track visitor check-ins.</p>
+                  <span className="service-link">Manage Visitors →</span>
                 </div>
               </div>
             </div>
@@ -1603,48 +1488,6 @@ const HomePage: React.FC = () => {
             </div>
           )}
         </div>
-
-        {/* Community Alerts Section */}
-        {alerts.length > 0 && (
-          <div className="section-container alerts-section">
-            <p style={{ color: '#4CAF50', fontWeight: 'bold', marginBottom: '10px', textAlign: 'center' }}>Important</p>
-            <h2 style={{ fontSize: '2.5rem', marginBottom: '40px', fontWeight: 'bold', textAlign: 'center' }}>Community Alerts</h2>
-            <div className="alerts-grid">
-              {alerts.map((alert) => (
-                <div
-                  key={alert.id}
-                  className={`alert-card alert-${alert.severity}`}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '10px' }}>
-                    <h3 style={{ marginBottom: '10px', fontSize: '1.2rem' }}>{alert.title}</h3>
-                    <span
-                      style={{
-                        padding: '4px 8px',
-                        borderRadius: '4px',
-                        fontSize: '0.75rem',
-                        fontWeight: 'bold',
-                        textTransform: 'uppercase',
-                        backgroundColor:
-                          alert.severity === 'critical'
-                            ? '#f44336'
-                            : alert.severity === 'warning'
-                            ? '#ff9800'
-                            : '#2196F3',
-                        color: 'white',
-                      }}
-                    >
-                      {alert.severity}
-                    </span>
-                  </div>
-                  <p style={{ fontSize: '0.95rem', color: '#555', lineHeight: '1.6' }}>{alert.message}</p>
-                  <span style={{ fontSize: '0.85rem', color: '#888', marginTop: '10px', display: 'block' }}>
-                    {new Date(alert.created_at).toLocaleDateString()}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* Media Modal */}
         {selectedMedia && (
@@ -1935,6 +1778,45 @@ const HomePage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Scroll to Top Button */}
+      {showScrollToTop && (
+        <button
+          onClick={scrollToTop}
+          style={{
+            position: 'fixed',
+            bottom: '30px',
+            right: '30px',
+            width: '50px',
+            height: '50px',
+            borderRadius: '50%',
+            backgroundColor: '#2e6F40',
+            color: 'white',
+            border: 'none',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '24px',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+            zIndex: 1000,
+            transition: 'all 0.3s ease',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = '#1e5a30';
+            e.currentTarget.style.transform = 'scale(1.1)';
+            e.currentTarget.style.boxShadow = '0 6px 16px rgba(0, 0, 0, 0.4)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = '#2e6F40';
+            e.currentTarget.style.transform = 'scale(1)';
+            e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.3)';
+          }}
+          aria-label="Scroll to top"
+        >
+          ↑
+        </button>
+      )}
 
       <Footer />
     </div>

@@ -1,13 +1,30 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Billing, Post, Message, Subdivision, Pin, UserProfile, Booking, Facility, AvailableSlot, Maintenance, News, Alert, ContactInfo, ContactMessage, Review, House, HouseImage, FAQ, ServiceFee, BlogComment, Bulletin, BulletinComment, CommunityMedia, VisitorRequest
+from .models import Billing, Post, Message, Subdivision, Pin, UserProfile, Booking, Facility, AvailableSlot, Maintenance, MaintenanceRequest, MaintenanceProvider, News, Alert, ContactInfo, ContactMessage, EmergencyContact, Review, House, HouseImage, FAQ, ServiceFee, BlogComment, Bulletin, BulletinComment, CommunityMedia, VisitorRequest
 from simple_history.models import HistoricalRecords
 
 
 class PostSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField()
+    
     class Meta:
         model = Post
         fields = '__all__'
+        extra_kwargs = {
+            'image': {'required': False, 'allow_null': True}
+        }
+    
+    def get_image_url(self, obj):
+        """Return full URL for the image if it exists"""
+        try:
+            if obj.image:
+                request = self.context.get('request')
+                if request:
+                    return request.build_absolute_uri(obj.image.url)
+                return obj.image.url
+        except (AttributeError, ValueError):
+            pass
+        return None
 
 
 class BlogCommentSerializer(serializers.ModelSerializer):
@@ -336,6 +353,63 @@ class MaintenanceSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['created_at', 'updated_at']
 
+class MaintenanceRequestSerializer(serializers.ModelSerializer):
+    homeowner_name = serializers.SerializerMethodField()
+    homeowner_email = serializers.SerializerMethodField()
+    approved_by_name = serializers.SerializerMethodField()
+    maintenance_type_display = serializers.CharField(source='get_maintenance_type_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    
+    def get_homeowner_name(self, obj):
+        if obj.homeowner.first_name and obj.homeowner.last_name:
+            return f"{obj.homeowner.first_name} {obj.homeowner.last_name}"
+        return obj.homeowner.username
+    
+    def get_homeowner_email(self, obj):
+        return obj.homeowner.email
+    
+    def get_approved_by_name(self, obj):
+        if obj.approved_by:
+            if obj.approved_by.first_name and obj.approved_by.last_name:
+                return f"{obj.approved_by.first_name} {obj.approved_by.last_name}"
+            return obj.approved_by.username
+        return None
+    
+    class Meta:
+        model = MaintenanceRequest
+        fields = [
+            'id', 'homeowner', 'homeowner_name', 'homeowner_email',
+            'maintenance_type', 'maintenance_type_display',
+            'description', 'preferred_date', 'preferred_time',
+            'is_urgent', 'use_external_contractor',
+            'external_contractor_name', 'external_contractor_contact', 'external_contractor_company',
+            'status', 'status_display',
+            'approved_by', 'approved_by_name', 'approved_at', 'declined_reason', 'admin_feedback',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['homeowner', 'approved_by', 'approved_at', 'created_at', 'updated_at']
+
+
+class MaintenanceProviderSerializer(serializers.ModelSerializer):
+    """Serializer for Maintenance Provider"""
+    created_by_username = serializers.CharField(source='created_by.username', read_only=True, allow_null=True)
+    services_list = serializers.SerializerMethodField()
+    
+    def get_services_list(self, obj):
+        """Return services as a list"""
+        return obj.get_services_list()
+    
+    class Meta:
+        model = MaintenanceProvider
+        fields = [
+            'id', 'name', 'contact_person', 'phone', 'email', 'address',
+            'services', 'services_list', 'is_nearby', 'distance',
+            'is_approved', 'is_active', 'rating', 'notes',
+            'created_by', 'created_by_username', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+
 class NewsSerializer(serializers.ModelSerializer):
     class Meta:
         model = News
@@ -358,6 +432,13 @@ class ContactMessageSerializer(serializers.ModelSerializer):
     class Meta:
         model = ContactMessage
         fields = ['id', 'name', 'email', 'subject', 'message', 'is_resolved', 'created_at']
+
+
+class EmergencyContactSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EmergencyContact
+        fields = ['id', 'name', 'phone', 'description', 'category', 'is_active', 'order', 'created_at', 'updated_at']
+        read_only_fields = ['created_at', 'updated_at']
 
  
 
@@ -393,10 +474,10 @@ class HistoricalRecordSerializer(serializers.ModelSerializer):
 
 class VisitorRequestSerializer(serializers.ModelSerializer):
     """Serializer for Visitor Request with one-time PIN"""
-    resident_username = serializers.CharField(source='resident.username', read_only=True)
-    resident_email = serializers.CharField(source='resident.email', read_only=True)
+    resident_username = serializers.SerializerMethodField()
+    resident_email = serializers.SerializerMethodField()
     resident_name = serializers.SerializerMethodField()
-    approved_by_username = serializers.CharField(source='approved_by.username', read_only=True, allow_null=True)
+    approved_by_username = serializers.SerializerMethodField()
     is_valid = serializers.SerializerMethodField()
     pdf_url = serializers.SerializerMethodField()
     
@@ -404,41 +485,129 @@ class VisitorRequestSerializer(serializers.ModelSerializer):
         model = VisitorRequest
         fields = [
             'id', 'resident', 'resident_username', 'resident_email', 'resident_name',
-            'visitor_name', 'visitor_email', 'visitor_contact_number', 'reason',
+            'visitor_name', 'visitor_email', 'visitor_contact_number', 'vehicle_plate_number', 'reason',
             'one_time_pin', 'visit_date', 'visit_end_date', 'visit_start_time', 'visit_end_time',
             'status', 'approved_by', 'approved_by_username', 'approved_at',
             'declined_reason', 'pdf_generated', 'pdf_file_path', 'pdf_url',
-            'email_sent', 'email_sent_at', 'visitor_record', 'is_valid',
+            'email_sent', 'email_sent_at', 'visitor_record', 'pin_entered_at', 'is_valid',
             'created_at', 'updated_at'
         ]
         read_only_fields = [
             'resident', 'one_time_pin', 'approved_by', 'approved_at',
             'pdf_generated', 'pdf_file_path', 'email_sent', 'email_sent_at',
-            'visitor_record', 'created_at', 'updated_at'
+            'visitor_record', 'pin_entered_at', 'created_at', 'updated_at'
         ]
+        extra_kwargs = {
+            'visitor_record': {'allow_null': True, 'required': False}
+        }
+    
+    def to_representation(self, instance):
+        """Override to safely handle visitor_record and other fields"""
+        try:
+            data = super().to_representation(instance)
+            # Ensure visitor_record is safely serialized (can be None)
+            # visitor_record is a ForeignKey, so it will be serialized as an ID (integer) or None
+            # No need to modify it, just ensure it's handled
+            return data
+        except Exception as e:
+            # If serialization fails, log and return minimal safe data
+            import traceback
+            import logging
+            logger = logging.getLogger(__name__)
+            error_msg = f"Serialization error for VisitorRequest {getattr(instance, 'id', 'unknown')}: {str(e)}"
+            logger.error(error_msg)
+            traceback.print_exc()
+            
+            # Return minimal safe representation
+            try:
+                return {
+                    'id': getattr(instance, 'id', None),
+                    'visitor_name': getattr(instance, 'visitor_name', ''),
+                    'visitor_email': getattr(instance, 'visitor_email', ''),
+                    'status': getattr(instance, 'status', ''),
+                    'visit_date': str(getattr(instance, 'visit_date', '')) if hasattr(instance, 'visit_date') and instance.visit_date else None,
+                    'visit_start_time': str(getattr(instance, 'visit_start_time', '')) if hasattr(instance, 'visit_start_time') and instance.visit_start_time else None,
+                    'visit_end_time': str(getattr(instance, 'visit_end_time', '')) if hasattr(instance, 'visit_end_time') and instance.visit_end_time else None,
+                    'resident': getattr(instance, 'resident_id', None),
+                    'visitor_record': getattr(instance, 'visitor_record_id', None),
+                    'one_time_pin': getattr(instance, 'one_time_pin', None),
+                    'created_at': str(getattr(instance, 'created_at', '')) if hasattr(instance, 'created_at') and instance.created_at else None,
+                    'error': 'Partial data due to serialization error'
+                }
+            except Exception as fallback_error:
+                logger.error(f"Fallback serialization also failed: {fallback_error}")
+                return {
+                    'id': getattr(instance, 'id', None),
+                    'error': 'Serialization failed'
+                }
+    
+    def get_resident_username(self, obj):
+        """Get resident username"""
+        try:
+            return obj.resident.username if obj.resident else None
+        except Exception:
+            return None
+    
+    def get_resident_email(self, obj):
+        """Get resident email"""
+        try:
+            return obj.resident.email if obj.resident else None
+        except Exception:
+            return None
     
     def get_resident_name(self, obj):
         """Get full name of resident"""
-        if obj.resident.first_name and obj.resident.last_name:
-            return f"{obj.resident.first_name} {obj.resident.last_name}"
-        return obj.resident.username
+        try:
+            if not obj.resident:
+                return 'Unknown'
+            if obj.resident.first_name and obj.resident.last_name:
+                return f"{obj.resident.first_name} {obj.resident.last_name}"
+            return obj.resident.username or 'Unknown'
+        except Exception:
+            return 'Unknown'
+    
+    def get_approved_by_username(self, obj):
+        """Get approved by username"""
+        try:
+            return obj.approved_by.username if obj.approved_by else None
+        except Exception:
+            return None
     
     def get_is_valid(self, obj):
         """Check if PIN is currently valid"""
-        return obj.is_valid()
+        try:
+            return obj.is_valid()
+        except Exception:
+            # Return False if validation fails (e.g., missing date/time fields)
+            return False
     
     def get_pdf_url(self, obj):
         """Get URL to PDF file via action endpoint (ensures proper PDF headers)"""
-        if obj.pdf_file_path or obj.pdf_generated:
-            request = self.context.get('request')
-            if request:
-                # Use the action endpoint instead of direct file URL
-                # This ensures proper Content-Type headers are set
-                return request.build_absolute_uri(f'/api/visitor-requests/{obj.id}/pdf/')
-            # Fallback to direct URL if no request context
-            if obj.pdf_file_path:
-                return obj.pdf_file_path.url
-        return None
+        try:
+            if not obj:
+                return None
+                
+            if obj.pdf_file_path or obj.pdf_generated:
+                request = self.context.get('request') if self.context else None
+                if request and hasattr(request, 'build_absolute_uri'):
+                    try:
+                        # Use the action endpoint instead of direct file URL
+                        # This ensures proper Content-Type headers are set
+                        return request.build_absolute_uri(f'/api/visitor-requests/{obj.id}/pdf/')
+                    except Exception:
+                        pass
+                
+                # Fallback to direct URL if no request context
+                if obj.pdf_file_path:
+                    try:
+                        if hasattr(obj.pdf_file_path, 'url'):
+                            return obj.pdf_file_path.url
+                    except (AttributeError, ValueError, TypeError):
+                        pass
+            return None
+        except Exception as e:
+            # Silently fail - PDF URL is optional
+            return None
     
 
 class UserProfileAdminSerializer(serializers.ModelSerializer):

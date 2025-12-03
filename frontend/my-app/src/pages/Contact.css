@@ -1,0 +1,468 @@
+/* Contact Page Styles - Clean Green, Black & White Theme */
+
+.contact-page-container {
+  min-height: 100vh;
+  background: #ffffff;
+  padding-top: 100px;
+  position: relative;
+}
+
+.contact-hero {
+  background: #ffffff;
+  padding: 70px 20px 60px;
+  text-align: center;
+  position: relative;
+  border-bottom: 3px solid #22c55e;
+}
+
+.contact-hero h1 {
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Roboto', sans-serif;
+  font-size: 3.5rem;
+  font-weight: 700;
+  color: #000000;
+  margin: 0 0 20px 0;
+  letter-spacing: -0.5px;
+  position: relative;
+}
+
+.contact-hero p {
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Roboto', sans-serif;
+  font-size: 1.2rem;
+  color: #4a5568;
+  max-width: 700px;
+  margin: 0 auto;
+  line-height: 1.8;
+  font-weight: 300;
+  position: relative;
+}
+
+.contact-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 60px 20px 80px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 50px;
+  align-items: start;
+  position: relative;
+}
+
+.contact-form-container {
+  background: #ffffff;
+  border: 2px solid #e5e7eb;
+  border-top: 4px solid #22c55e;
+  padding: 45px;
+  box-shadow: 0 2px 20px rgba(0, 0, 0, 0.06);
+  position: relative;
+  border-radius: 0;
+  transition: box-shadow 0.3s ease;
+}
+
+.contact-form-container:hover {
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+}
+
+.contact-form-title {
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Roboto', sans-serif;
+  font-size: 2rem;
+  font-weight: 600;
+  color: #000000;
+  margin: 0 0 35px 0;
+  letter-spacing: -0.3px;
+  position: relative;
+  padding-bottom: 20px;
+}
+
+.contact-form-title::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 60px;
+  height: 3px;
+  background: #22c55e;
+  border-radius: 2px;
+}
+
+.contact-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 22px;
+}
+
+.form-group label {
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Roboto', sans-serif;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #000000;
+  letter-spacing: 0.2px;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Roboto', sans-serif;
+  font-size: 1rem;
+  padding: 14px 16px;
+  border: 2px solid #e5e7eb;
+  background: #ffffff;
+  color: #000000;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.form-group input:hover,
+.form-group select:hover,
+.form-group textarea:hover {
+  border-color: #d1d5db;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.1);
+  background: #ffffff;
+}
+
+.form-group textarea {
+  resize: vertical;
+  min-height: 140px;
+  line-height: 1.6;
+}
+
+.form-group select {
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath fill='%2322c55e' d='M8 11L3 6h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 16px center;
+  padding-right: 45px;
+}
+
+.checkbox-group {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 18px;
+  background: #f9fafb;
+  border: 2px solid #e5e7eb;
+  border-left: 4px solid #22c55e;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  margin-top: 10px;
+}
+
+.checkbox-group:hover {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+}
+
+.checkbox-group input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  accent-color: #22c55e;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.checkbox-group label {
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Roboto', sans-serif;
+  font-size: 0.95rem;
+  font-weight: 400;
+  color: #374151;
+  cursor: pointer;
+  line-height: 1.6;
+}
+
+.submit-button {
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Roboto', sans-serif;
+  font-size: 1rem;
+  font-weight: 600;
+  padding: 16px 32px;
+  background: #22c55e;
+  color: #ffffff;
+  border: 2px solid #22c55e;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-top: 10px;
+  box-shadow: 0 2px 8px rgba(34, 197, 94, 0.2);
+  letter-spacing: 0.3px;
+}
+
+.submit-button span {
+  position: relative;
+  z-index: 1;
+}
+
+.submit-button:hover:not(:disabled) {
+  background: #16a34a;
+  border-color: #16a34a;
+  box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3);
+  transform: translateY(-1px);
+}
+
+.submit-button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.submit-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.status-message {
+  padding: 16px 20px;
+  border-radius: 8px;
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Roboto', sans-serif;
+  font-size: 0.95rem;
+  text-align: center;
+  margin-top: 20px;
+  font-weight: 500;
+  animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.status-message.success {
+  background: #f0fdf4;
+  color: #166534;
+  border: 2px solid #86efac;
+}
+
+.status-message.error {
+  background: #fef2f2;
+  color: #991b1b;
+  border: 2px solid #fca5a5;
+}
+
+.contact-info-container {
+  background: #ffffff;
+  border: 2px solid #e5e7eb;
+  border-top: 4px solid #22c55e;
+  padding: 45px;
+  box-shadow: 0 2px 20px rgba(0, 0, 0, 0.06);
+  position: relative;
+  border-radius: 0;
+  transition: box-shadow 0.3s ease;
+}
+
+.contact-info-container:hover {
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+}
+
+.contact-info-title {
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Roboto', sans-serif;
+  font-size: 2rem;
+  font-weight: 600;
+  color: #000000;
+  margin: 0 0 35px 0;
+  letter-spacing: -0.3px;
+  position: relative;
+  padding-bottom: 20px;
+}
+
+.contact-info-title::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 60px;
+  height: 3px;
+  background: #22c55e;
+  border-radius: 2px;
+}
+
+.contact-info-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 30px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.contact-info-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+  padding: 22px;
+  background: #f9fafb;
+  border: 2px solid #e5e7eb;
+  border-left: 4px solid #22c55e;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.contact-info-item:hover {
+  background: #ffffff;
+  border-color: #d1d5db;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  transform: translateY(-2px);
+}
+
+.contact-info-item-icon {
+  font-size: 1.6rem;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.contact-info-item-content {
+  flex: 1;
+}
+
+.contact-info-item-label {
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Roboto', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.contact-info-item-value {
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Roboto', sans-serif;
+  font-size: 1.1rem;
+  color: #000000;
+  line-height: 1.6;
+  font-weight: 500;
+}
+
+.contact-info-item-value a {
+  color: #22c55e;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  font-weight: 600;
+}
+
+.contact-info-item-value a:hover {
+  color: #16a34a;
+  text-decoration: underline;
+}
+
+.contact-map-container {
+  margin-top: 30px;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  border: 2px solid #e5e7eb;
+  transition: all 0.2s ease;
+}
+
+.contact-map-container:hover {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+}
+
+.map-responsive {
+  position: relative;
+  width: 100%;
+  padding-bottom: 56.25%; /* 16:9 aspect ratio */
+  height: 0;
+  overflow: hidden;
+}
+
+.map-responsive iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+/* Responsive Design */
+@media (max-width: 968px) {
+  .contact-content {
+    grid-template-columns: 1fr;
+    gap: 40px;
+  }
+
+  .contact-hero h1 {
+    font-size: 2.8rem;
+  }
+
+  .contact-form-title,
+  .contact-info-title {
+    font-size: 1.75rem;
+  }
+
+  .contact-form-container,
+  .contact-info-container {
+    padding: 35px;
+  }
+}
+
+@media (max-width: 600px) {
+  .contact-hero {
+    padding: 60px 15px 50px;
+  }
+
+  .contact-hero h1 {
+    font-size: 2.2rem;
+    letter-spacing: -0.3px;
+  }
+
+  .contact-hero p {
+    font-size: 1rem;
+  }
+
+  .contact-content {
+    padding: 40px 15px 60px;
+  }
+
+  .contact-form-container,
+  .contact-info-container {
+    padding: 30px 20px;
+    border-radius: 10px;
+  }
+
+  .contact-form-title,
+  .contact-info-title {
+    font-size: 1.5rem;
+    margin-bottom: 25px;
+  }
+
+  .form-group input,
+  .form-group select,
+  .form-group textarea {
+    padding: 12px 14px;
+    font-size: 0.95rem;
+  }
+
+  .submit-button {
+    padding: 14px 28px;
+    font-size: 0.95rem;
+  }
+
+  .contact-info-item {
+    padding: 18px;
+  }
+
+  .contact-info-item-icon {
+    font-size: 1.3rem;
+  }
+}
+

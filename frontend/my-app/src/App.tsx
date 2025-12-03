@@ -32,13 +32,15 @@ import ResidentDashboard from './pages/ResidentDashboard';
 import VisitorDashboard from './pages/VisitorDashboard';
 import VisitorStatus from './pages/VisitorStatus';
 import HouseSalePage from './pages/HouseSalePage';
-import PortfolioPage from './pages/PortfolioPage';
 import AdminSalePage from './pages/AdminSalePage';
+import HouseDetailPage from './pages/HouseDetailPage';
 import FAQ from './pages/FAQ';
 import Billing from './pages/Billing';
 import AdminServiceFee from './pages/AdminServiceFee';
 import AdminFAQ from './pages/AdminFAQ';
 import AdminBulletin from './pages/AdminBulletin';
+import MaintenanceRequestPage from './pages/MaintenanceRequestPage';
+import AdminMaintenanceRequests from './pages/AdminMaintenanceRequests';
 
 function AppContent() {
   const location = useLocation();
@@ -84,13 +86,15 @@ function AppContent() {
       <Route path="/visitor-dashboard" element={<VisitorDashboard />} />   {/* Visitor Dashboard page */}
       <Route path="/visitor-status" element={<VisitorStatus />} />   {/* Visitor Status page */}
       <Route path="/house-sales" element={<HouseSalePage />} />   {/* House Sale page */}
-      <Route path="/portfolio/:id" element={<PortfolioPage />} />   {/* Portfolio page */}
+      <Route path="/house-detail/:id" element={<HouseDetailPage />} />   {/* House Detail page */}
       <Route path="/admin-sales" element={<AdminSalePage />} />   {/* Admin Sale page */}
       <Route path="/billing" element={<Billing />} />   {/* Billing page */}
       <Route path="/admin-faq" element={<AdminFAQ />} />   {/* Admin FAQ Management page */}
       <Route path="/admin-service-fee" element={<AdminServiceFee />} />   {/* Admin Service Fee page */}
       <Route path="/admin-bulletin" element={<AdminBulletin />} />   {/* Admin Bulletin Management page */}
       <Route path="/faq" element={<FAQ />} />   {/* FAQ page */}
+      <Route path="/maintenance-request" element={<MaintenanceRequestPage />} />   {/* Maintenance Request page */}
+      <Route path="/admin-maintenance-requests" element={<AdminMaintenanceRequests />} />   {/* Admin Maintenance Requests page */}
       {/* Redirect unknown routes */}
       <Route path="*" element={<LoginPage />} />
     </Routes>

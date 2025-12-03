@@ -4,9 +4,9 @@ import {
   MapContainer,
   TileLayer,
   Marker,
-  Popup,
   Circle,
   useMap,
+  useMapEvents,
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -105,6 +105,18 @@ const ResizeFix: React.FC = () => {
   return null;
 };
 
+// Map click handler to close side panel
+const MapClickHandler: React.FC<{ onMapClick: () => void }> = ({ onMapClick }) => {
+  useMapEvents({
+    click: (e) => {
+      // Close panel when clicking on the map
+      // The event will be stopped by marker clicks, so this only fires for map clicks
+      onMapClick();
+    }
+  });
+  return null;
+};
+
 // Pin Popup Content Component
 interface PinPopupContentProps {
   pin: Pin;
@@ -141,21 +153,23 @@ const PinPopupContent: React.FC<PinPopupContentProps> = ({
   formatDate,
   fetchReviews
 }) => {
+  const [isOverviewExpanded, setIsOverviewExpanded] = useState(false);
+  
   return (
     <div style={{ 
-      minWidth: '320px', 
-      maxWidth: '380px',
+      width: '100%',
       fontFamily: 'Roboto, Arial, sans-serif'
     }}>
       {/* Image Section */}
       {pin.image && (
         <div style={{
           width: '100%',
-          height: 'auto',
+          height: '150px',
           overflow: 'hidden',
-          borderRadius: '8px 8px 0 0',
-          margin: '-10px -10px 12px -10px',
-          backgroundColor: '#f5f5f5'
+          borderRadius: '8px',
+          marginBottom: '12px',
+          backgroundColor: '#f5f5f5',
+          flexShrink: 0
         }}>
           <img 
             src={pin.image.startsWith('http') ? pin.image : `http://localhost:8000${pin.image}`}
@@ -176,13 +190,14 @@ const PinPopupContent: React.FC<PinPopupContentProps> = ({
       
       {/* Title Section */}
       <div style={{
-        marginBottom: '12px',
-        paddingBottom: '10px',
-        borderBottom: '1px solid #e0e0e0'
+        marginBottom: '10px',
+        paddingBottom: '8px',
+        borderBottom: '1px solid #e0e0e0',
+        flexShrink: 0
       }}>
         <h3 style={{
           margin: 0,
-          fontSize: '18px',
+          fontSize: '16px',
           fontWeight: '500',
           color: '#1a1a1a',
           lineHeight: '1.4',
@@ -195,179 +210,164 @@ const PinPopupContent: React.FC<PinPopupContentProps> = ({
           {!pin.name.toLowerCase().includes("court") && !pin.name.toLowerCase().includes("pool") && ""}
           <span>{pin.name}</span>
         </h3>
-        {/* Rating Display */}
-       
-
       </div>
 
       {/* Tabs */}
       <div style={{
         display: 'flex',
         borderBottom: '1px solid #e0e0e0',
-        marginBottom: '12px'
+        marginBottom: '10px',
+        flexShrink: 0
       }}>
         <button
-          onClick={() => setActiveTab("overview")}
+          type="button"
+          onClick={() => {
+            if (activeTab === "overview") {
+              setIsOverviewExpanded(!isOverviewExpanded);
+            } else {
+              setActiveTab("overview");
+              setIsOverviewExpanded(true);
+            }
+          }}
           style={{
             flex: 1,
-            padding: '8px 12px',
+            padding: '6px 12px',
             border: 'none',
             background: 'none',
             cursor: 'pointer',
-            
             color: activeTab === 'overview' ? 'rgb(46, 125, 50)' : '#666',
             fontWeight: activeTab === 'overview' ? '500' : '400',
-            fontSize: '14px'
+            fontSize: '13px',
+            transition: 'color 0.2s ease',
+            outline: 'none',
+            textAlign: 'left',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between'
           }}
         >
-          Overview
+          <span>Overview</span>
+          {activeTab === 'overview' && (
+            <span style={{ fontSize: '12px', marginLeft: '8px' }}>
+              {isOverviewExpanded ? '▼' : '▶'}
+            </span>
+          )}
         </button>
 
       </div>
 
       {/* Tab Content */}
       {activeTab === "overview" ? (
-        <div>
-          {/* Status Badge */}
-          {pin.status && (
-            <div style={{ marginBottom: '12px' }}>
-              <span style={{
-                display: 'inline-block',
-                padding: '4px 12px',
-                borderRadius: '16px',
-                fontSize: '12px',
-                fontWeight: '500',
-                backgroundColor: pin.status === 'Available' ? '#e8f5e9' : 
-                               pin.status === 'Occupied' ? '#fff3e0' : 
-                               pin.status === 'Reserved' ? '#fce4ec' : '#f5f5f5',
-                color: pin.status === 'Available' ? '#2e7d32' : 
-                      pin.status === 'Occupied' ? '#f57c00' : 
-                      pin.status === 'Reserved' ? '#c2185b' : '#616161',
-                border: `1px solid ${pin.status === 'Available' ? '#a5d6a7' : 
-                                pin.status === 'Occupied' ? '#ffcc80' : 
-                                pin.status === 'Reserved' ? '#f48fb1' : '#e0e0e0'}`
-              }}>
-                {pin.status}
-              </span>
-            </div>
-          )}
-          
-          {/* Address Section */}
-          {pin.description && (
-            <div style={{
-              marginBottom: '12px',
-              paddingBottom: '12px',
-              borderBottom: '1px solid #f0f0f0'
-            }}>
-              <div style={{
-                display: 'flex',
-                alignItems: 'flex-start',
-                gap: '8px'
-              }}>
+        isOverviewExpanded && (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+            {/* Status Badge */}
+            {pin.status && (
+              <div style={{ marginBottom: '8px', flexShrink: 0 }}>
                 <span style={{
-                  fontSize: '16px',
-                  color: '#666',
-                  marginTop: '2px'
-                }}></span>
-                <div style={{ flex: 1 }}>
-                  <div style={{
-                    fontSize: '11px',
-                    color: '#666',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.5px',
-                    marginBottom: '4px',
-                    fontWeight: '500'
-                  }}>
-                    Address and Description
-                  </div>
-                  <div style={{
-                    fontSize: '14px',
-                    color: '#1a1a1a',
-                    lineHeight: '1.5'
-                  }}>
-                    {pin.description}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-                    {/* Address Section */}
-          {pin.price && (
-            <div style={{
-              marginBottom: '12px',
-              paddingBottom: '12px',
-              borderBottom: '1px solid #f0f0f0'
-            }}>
-              <div style={{
-                display: 'flex',
-                alignItems: 'flex-start',
-                gap: '8px'
-              }}>
-                <span style={{
-                  fontSize: '16px',
-                  color: '#666',
-                  marginTop: '2px'
-                }}></span>
-                <div style={{ flex: 1 }}>
-                  <div style={{
-                    fontSize: '11px',
-                    color: '#666',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.5px',
-                    marginBottom: '4px',
-                    fontWeight: '500'
-                  }}>
-                    Price (Peso)
-                  </div>
-                  <div style={{
-                    fontSize: '14px',
-                    color: '#1a1a1a',
-                    lineHeight: '1.5'
-                  }}>
-                    {pin.price}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-          
-          {/* Square Meter Section */}
-          {pin.square_meter && (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '8px 0'
-            }}>
-              <span style={{
-                fontSize: '16px',
-                color: '#666'
-              }}></span>
-              <div style={{ flex: 1 }}>
-                <div style={{
+                  display: 'inline-block',
+                  padding: '3px 10px',
+                  borderRadius: '12px',
                   fontSize: '11px',
+                  fontWeight: '500',
+                  backgroundColor: pin.status === 'Available' ? '#e8f5e9' : 
+                                 pin.status === 'Occupied' ? '#fff3e0' : 
+                                 pin.status === 'Reserved' ? '#fce4ec' : '#f5f5f5',
+                  color: pin.status === 'Available' ? '#2e7d32' : 
+                        pin.status === 'Occupied' ? '#f57c00' : 
+                        pin.status === 'Reserved' ? '#c2185b' : '#616161',
+                  border: `1px solid ${pin.status === 'Available' ? '#a5d6a7' : 
+                                  pin.status === 'Occupied' ? '#ffcc80' : 
+                                  pin.status === 'Reserved' ? '#f48fb1' : '#e0e0e0'}`
+                }}>
+                  {pin.status}
+                </span>
+              </div>
+            )}
+            
+            {/* Address Section */}
+            {pin.description && (
+              <div style={{
+                marginBottom: '8px',
+                paddingBottom: '8px',
+                borderBottom: '1px solid #f0f0f0',
+                flexShrink: 0
+              }}>
+                <div style={{
+                  fontSize: '10px',
                   color: '#666',
                   textTransform: 'uppercase',
                   letterSpacing: '0.5px',
-                  marginBottom: '4px',
+                  marginBottom: '3px',
+                  fontWeight: '500'
+                }}>
+                  Address and Description
+                </div>
+                <div style={{
+                  fontSize: '13px',
+                  color: '#1a1a1a',
+                  lineHeight: '1.4'
+                }}>
+                  {pin.description}
+                </div>
+              </div>
+            )}
+
+            {/* Price Section */}
+            {pin.price && (
+              <div style={{
+                marginBottom: '8px',
+                paddingBottom: '8px',
+                borderBottom: '1px solid #f0f0f0',
+                flexShrink: 0
+              }}>
+                <div style={{
+                  fontSize: '10px',
+                  color: '#666',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                  marginBottom: '3px',
+                  fontWeight: '500'
+                }}>
+                  Price (Peso)
+                </div>
+                <div style={{
+                  fontSize: '13px',
+                  color: '#1a1a1a',
+                  lineHeight: '1.4'
+                }}>
+                  {pin.price}
+                </div>
+              </div>
+            )}
+            
+            {/* Square Meter Section */}
+            {pin.square_meter && (
+              <div style={{
+                flexShrink: 0
+              }}>
+                <div style={{
+                  fontSize: '10px',
+                  color: '#666',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                  marginBottom: '3px',
                   fontWeight: '500'
                 }}>
                   Area
                 </div>
                 <div style={{
-                  fontSize: '14px',
+                  fontSize: '13px',
                   color: '#1a1a1a',
                   fontWeight: '500'
                 }}>
                   {pin.square_meter} m²
                 </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )
       ) : (
-        <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+        <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           {/* Write Review Button */}
           {isAuthenticated && !showReviewForm && (
             <button
@@ -428,24 +428,38 @@ const UserMapPage: React.FC = () => {
     setIsAuthenticated(!!token);
   }, []);
 
-  // Fetch reviews for selected pin
+  // Fetch reviews for selected pin (now works for both authenticated and guest users)
   const fetchReviews = useCallback(async (pinId: number) => {
     try {
       const token = localStorage.getItem("access");
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json'
+      };
+      
+      // Add authorization header if token exists, but reviews are now viewable by guests
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      
       const response = await fetch(`http://localhost:8000/api/reviews/?pin_id=${pinId}`, {
-        headers: token ? {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        } : {
-          'Content-Type': 'application/json'
-        }
+        headers: headers
       });
+      
       if (response.ok) {
         const data = await response.json();
         setReviews(data);
+      } else if (response.status === 401) {
+        // If still getting 401, set empty reviews (shouldn't happen now, but handle gracefully)
+        setReviews([]);
+        console.warn('Could not fetch reviews - authentication may be required');
+      } else {
+        // Other errors
+        setReviews([]);
+        console.error("Error fetching reviews:", response.status, response.statusText);
       }
     } catch (error) {
       console.error("Error fetching reviews:", error);
+      setReviews([]);
     }
   }, []);
 
@@ -464,7 +478,7 @@ const UserMapPage: React.FC = () => {
   }, [fetchPins]);
 
   // Handle pin popup open
-  const handlePinPopupOpen = (pin: Pin) => {
+  const handlePinClick = (pin: Pin) => {
     setSelectedPin(pin);
     setActiveTab("overview");
     fetchReviews(pin.id);
@@ -556,93 +570,196 @@ const UserMapPage: React.FC = () => {
   return (
     <>
       <NavBar profile={null} />
-      <div style={{ position: "relative", height: "100vh", width: "100%" }}>
-        {/* Search Input Overlay */}
-        <div
-          style={{
-            position: "absolute",
-            top: 10,
-            left: "50%",
-            transform: "translateX(-50%)",
-            zIndex: 1000,
-            width: "90%",
-            maxWidth: "400px",
-          }}
-        >
-          <input
-            type="text"
-            placeholder="Search by status or description..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+      <div style={{ 
+        display: 'flex', 
+        height: '100vh', 
+        width: '100%',
+        position: 'relative',
+        overflow: 'hidden'
+      }}>
+        {/* Map Section - Left Side */}
+        <div style={{ 
+          flex: selectedPin ? '1 1 60%' : '1 1 100%',
+          height: '100%',
+          position: 'relative',
+          transition: 'flex 0.3s ease'
+        }}>
+          {/* Search Input Overlay */}
+          <div
             style={{
-              width: "100%",
-              padding: "10px 15px",
-              borderRadius: "8px",
-              border: "1px solid #ccc",
-              fontSize: "14px",
-              backgroundColor: "white",
-              boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
+              position: "absolute",
+              top: 10,
+              left: selectedPin ? "20px" : "50%",
+              transform: selectedPin ? "none" : "translateX(-50%)",
+              zIndex: 1000,
+              width: selectedPin ? "calc(100% - 440px)" : "90%",
+              maxWidth: selectedPin ? "none" : "400px",
+              transition: "all 0.3s ease"
             }}
-          />
+          >
+            <input
+              type="text"
+              placeholder="Search by status or description..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "10px 15px",
+                borderRadius: "8px",
+                border: "1px solid #ccc",
+                fontSize: "14px",
+                backgroundColor: "white",
+                boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
+              }}
+            />
+          </div>
+
+          <MapContainer
+            center={circleCenter}
+            zoom={19}
+            style={{ height: "100%", width: "100%" }}
+            attributionControl={false}
+            zoomControl={true}
+            scrollWheelZoom={true}
+          >
+            <ResizeFix />
+            <MapClickHandler onMapClick={() => {
+              if (selectedPin) {
+                setSelectedPin(null);
+                setActiveTab("overview");
+              }
+            }} />
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a>'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+            <Circle
+              center={circleCenter}
+              radius={circleRadius}
+              pathOptions={{ color: "green", fillColor: "red", fillOpacity: 0 }}
+            />
+            {filteredPins.map((pin) => {
+              const name =
+                pin.name.toLowerCase().includes("court") ||
+                pin.name.toLowerCase().includes("pool")
+                  ? pin.name
+                  : "Unknown";
+
+              return (
+                <Marker
+                  key={pin.id}
+                  position={[pin.latitude, pin.longitude]}
+                  icon={getPinIcon(pin.name)}
+                  eventHandlers={{
+                    click: (e) => {
+                      e.originalEvent.stopPropagation();
+                      handlePinClick(pin);
+                    }
+                  }}
+                />
+              );
+            })}
+          </MapContainer>
         </div>
 
-        <MapContainer
-          center={circleCenter}
-          zoom={19}
-          style={{ height: "100%", width: "100%" }}
-          attributionControl={false}
-          zoomControl={true}
-          scrollWheelZoom={true}
-        >
-          <ResizeFix />
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a>'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
-          <Circle
-            center={circleCenter}
-            radius={circleRadius}
-            pathOptions={{ color: "green", fillColor: "red", fillOpacity: 0 }}
-          />
-          {filteredPins.map((pin) => {
-            const name =
-              pin.name.toLowerCase().includes("court") ||
-              pin.name.toLowerCase().includes("pool")
-                ? pin.name
-                : "Unknown";
-
-            return (
-              <Marker
-                key={pin.id}
-                position={[pin.latitude, pin.longitude]}
-                icon={getPinIcon(pin.name)}
-                eventHandlers={{
-                  popupopen: () => handlePinPopupOpen(pin)
+        {/* Side Panel - Right Side - Shows when pin is selected */}
+        {selectedPin && (
+          <div style={{
+            flex: '0 0 400px',
+            height: '100%',
+            backgroundColor: 'white',
+            boxShadow: '-2px 0 10px rgba(0,0,0,0.1)',
+            overflow: 'hidden',
+            zIndex: 1000,
+            display: 'flex',
+            flexDirection: 'column',
+            borderLeft: '1px solid #e0e0e0'
+          }}>
+            {/* Header with Close Button */}
+            <div style={{
+              padding: '15px 20px',
+              borderBottom: '1px solid #e0e0e0',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              backgroundColor: 'white',
+              flexShrink: 0
+            }}>
+              <h2 style={{ 
+                margin: 0, 
+                fontSize: '20px', 
+                color: '#2e6F40',
+                fontWeight: '600',
+                flex: 1
+              }}>
+                {selectedPin.name}
+              </h2>
+              <button
+                onClick={() => {
+                  setSelectedPin(null);
+                  setActiveTab("overview");
                 }}
+                style={{
+                  background: '#f0f0f0',
+                  border: '1px solid #ddd',
+                  fontSize: '20px',
+                  cursor: 'pointer',
+                  color: '#333',
+                  padding: '6px 12px',
+                  borderRadius: '4px',
+                  transition: 'all 0.2s',
+                  lineHeight: '1',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  minWidth: '32px',
+                  height: '32px',
+                  fontWeight: 'bold'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#e0e0e0';
+                  e.currentTarget.style.borderColor = '#bbb';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = '#f0f0f0';
+                  e.currentTarget.style.borderColor = '#ddd';
+                }}
+                aria-label="Close panel"
               >
-                <Popup minWidth={320} maxWidth={380} className="google-map-popup">
-                  <PinPopupContent 
-                    pin={pin}
-                    reviews={reviews}
-                    activeTab={activeTab}
-                    setActiveTab={setActiveTab}
-                    isAuthenticated={isAuthenticated}
-                    showReviewForm={showReviewForm}
-                    setShowReviewForm={setShowReviewForm}
-                    reviewRating={reviewRating}
-                    setReviewRating={setReviewRating}
-                    reviewComment={reviewComment}
-                    setReviewComment={setReviewComment}
-                    handleSubmitReview={handleSubmitReview}
-                    renderStars={renderStars}
-                    formatDate={formatDate}
-                    fetchReviews={() => fetchReviews(pin.id)}
-                  />
-                </Popup>
-              </Marker>
-            );
-          })}
-        </MapContainer>
+                ×
+              </button>
+            </div>
+
+            {/* Pin Details Content - No scroll, fits all content */}
+            <div style={{ 
+              padding: '15px 20px', 
+              flex: 1,
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column'
+            }}>
+              <div style={{ overflow: 'hidden', flex: 1 }}>
+                <PinPopupContent 
+                  pin={selectedPin}
+                  reviews={reviews}
+                  activeTab={activeTab}
+                  setActiveTab={setActiveTab}
+                  isAuthenticated={isAuthenticated}
+                  showReviewForm={showReviewForm}
+                  setShowReviewForm={setShowReviewForm}
+                  reviewRating={reviewRating}
+                  setReviewRating={setReviewRating}
+                  reviewComment={reviewComment}
+                  setReviewComment={setReviewComment}
+                  handleSubmitReview={handleSubmitReview}
+                  renderStars={renderStars}
+                  formatDate={formatDate}
+                  fetchReviews={() => fetchReviews(selectedPin.id)}
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </>
   );

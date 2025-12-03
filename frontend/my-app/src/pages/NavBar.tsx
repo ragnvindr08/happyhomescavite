@@ -40,6 +40,7 @@ const NavBar: React.FC<NavBarProps> = ({ profile }) => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isVerified, setIsVerified] = useState(false);
   const [openDropdown, setOpenDropdown] = useState(false);
+  const [serviceDropdownOpen, setServiceDropdownOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [userProfile, setUserProfile] = useState<any>(null);
@@ -47,6 +48,9 @@ const NavBar: React.FC<NavBarProps> = ({ profile }) => {
   const exploreDropdownRef = useRef<HTMLLIElement>(null);
   const exploreMenuRef = useRef<HTMLUListElement>(null);
   const exploreTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const serviceDropdownRef = useRef<HTMLLIElement>(null);
+  const serviceMenuRef = useRef<HTMLUListElement>(null);
+  const serviceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isLoggedIn = !!getToken();
 
   // Determine active route
@@ -56,6 +60,13 @@ const NavBar: React.FC<NavBarProps> = ({ profile }) => {
 
   // Check if Explore dropdown should be active (when on map or house-sales)
   const isExploreActive = location.pathname === '/map' || location.pathname === '/house-sales';
+  
+  // Check if Service dropdown should be active
+  const isServiceActive = location.pathname === '/booking-amenities' || 
+                          location.pathname === '/maintenance-request' || 
+                          location.pathname === '/billing' || 
+                          location.pathname === '/resident-dashboard' ||
+                          location.pathname === '/contact';
 
 
   // Check admin status and verification status, and fetch profile image
@@ -99,6 +110,10 @@ const NavBar: React.FC<NavBarProps> = ({ profile }) => {
       if (exploreDropdownRef.current && !exploreDropdownRef.current.contains(event.target as Node)) {
         setOpenDropdown(false);
       }
+      // Close service dropdown when clicking outside
+      if (serviceDropdownRef.current && !serviceDropdownRef.current.contains(event.target as Node)) {
+        setServiceDropdownOpen(false);
+      }
       // Close mobile menu when clicking outside
       const target = event.target as HTMLElement;
       if (isMobileMenuOpen && !target.closest('.navbar-content')) {
@@ -111,6 +126,9 @@ const NavBar: React.FC<NavBarProps> = ({ profile }) => {
       // Cleanup timeout on unmount
       if (exploreTimeoutRef.current) {
         clearTimeout(exploreTimeoutRef.current);
+      }
+      if (serviceTimeoutRef.current) {
+        clearTimeout(serviceTimeoutRef.current);
       }
     };
   }, [isMobileMenuOpen]);
@@ -272,23 +290,140 @@ const NavBar: React.FC<NavBarProps> = ({ profile }) => {
                   </ul>
                 </li>
 
-                <li 
-                  className={isActiveRoute('/contact') ? 'active' : ''}
-                  onClick={() => {
-                    navigate('/contact');
-                    setIsMobileMenuOpen(false);
-                  }}>
-                   Contact
-                </li>
 
-                <li 
-                  className={isActiveRoute('/booking-amenities') ? 'active' : ''}
-                  onClick={() => {
-                    navigate('/booking-amenities');
-                    setIsMobileMenuOpen(false);
-                  }}>
-                   Booking
-                </li>
+                {/* Service Dropdown - Only show for logged in homeowners */}
+                {isLoggedIn && !isAdmin && (
+                  <li
+                    ref={serviceDropdownRef}
+                    className={`dropdown ${isServiceActive ? 'active' : ''}`}
+                    onMouseEnter={() => {
+                      if (window.innerWidth > 768) {
+                        if (serviceTimeoutRef.current) {
+                          clearTimeout(serviceTimeoutRef.current);
+                          serviceTimeoutRef.current = null;
+                        }
+                        setServiceDropdownOpen(true);
+                      }
+                    }}
+                    onMouseLeave={() => {
+                      // Only auto-close on hover for desktop (not mobile)
+                      if (window.innerWidth > 768) {
+                        // Add a small delay to allow mouse to move to menu
+                        serviceTimeoutRef.current = setTimeout(() => {
+                          setServiceDropdownOpen(false);
+                          serviceTimeoutRef.current = null;
+                        }, 200);
+                      }
+                    }}
+                  >
+                    <span 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setServiceDropdownOpen(!serviceDropdownOpen);
+                        if (isMobileMenuOpen) setIsMobileMenuOpen(false);
+                      }}
+                      style={{ cursor: 'pointer' }}
+                    >
+                     Service
+                    </span>
+                    <ul 
+                      ref={serviceMenuRef}
+                      className={`dropdown-menu ${serviceDropdownOpen ? 'show' : ''}`}
+                      onClick={(e) => e.stopPropagation()}
+                      onMouseEnter={() => {
+                        // Clear any pending close timeout
+                        if (serviceTimeoutRef.current) {
+                          clearTimeout(serviceTimeoutRef.current);
+                          serviceTimeoutRef.current = null;
+                        }
+                        // Keep dropdown open when hovering over menu
+                        if (window.innerWidth > 768) {
+                          setServiceDropdownOpen(true);
+                        }
+                      }}
+                      onMouseLeave={() => {
+                        // Close when leaving the menu
+                        if (window.innerWidth > 768) {
+                          serviceTimeoutRef.current = setTimeout(() => {
+                            setServiceDropdownOpen(false);
+                            serviceTimeoutRef.current = null;
+                          }, 200);
+                        }
+                      }}
+                    >
+                      {isVerified && (
+                        <li 
+                          className={isActiveRoute('/booking-amenities') ? 'active' : ''}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate('/booking-amenities');
+                            setServiceDropdownOpen(false);
+                            setIsMobileMenuOpen(false);
+                          }}
+                          style={{ cursor: 'pointer' }}
+                        >
+                          Booking
+                        </li>
+                      )}
+                      {isVerified && (
+                        <li 
+                          className={isActiveRoute('/maintenance-request') ? 'active' : ''}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate('/maintenance-request');
+                            setServiceDropdownOpen(false);
+                            setIsMobileMenuOpen(false);
+                          }}
+                          style={{ cursor: 'pointer' }}
+                        >
+                          Maintenance
+                        </li>
+                      )}
+                      {isVerified && (
+                        <li 
+                          className={isActiveRoute('/billing') ? 'active' : ''}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate('/billing');
+                            setServiceDropdownOpen(false);
+                            setIsMobileMenuOpen(false);
+                          }}
+                          style={{ cursor: 'pointer' }}
+                        >
+                          Billing
+                        </li>
+                      )}
+                      {isVerified && (
+                        <li 
+                          className={isActiveRoute('/resident-dashboard') ? 'active' : ''}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate('/resident-dashboard');
+                            setServiceDropdownOpen(false);
+                            setIsMobileMenuOpen(false);
+                          }}
+                          style={{ cursor: 'pointer' }}
+                        >
+                          Visitors
+                        </li>
+                      )}
+                      {isLoggedIn && (
+                        <li 
+                          className={isActiveRoute('/contact') ? 'active' : ''}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate('/contact');
+                            setServiceDropdownOpen(false);
+                            setIsMobileMenuOpen(false);
+                          }}
+                          style={{ cursor: 'pointer' }}
+                        >
+                          Contact
+                        </li>
+                      )}
+                    </ul>
+                  </li>
+                )}
 
                 <li 
                   className={isActiveRoute('/faq') ? 'active' : ''}
@@ -310,32 +445,6 @@ const NavBar: React.FC<NavBarProps> = ({ profile }) => {
               </>
             )}
 
-           {isLoggedIn && (
-              <>
-                {isVerified && !isAdmin && (
-                  <li 
-                    className={isActiveRoute('/billing') ? 'active' : ''}
-                    onClick={() => {
-                      navigate('/billing');
-                      setIsMobileMenuOpen(false);
-                    }}>
-                     Billing
-                  </li>
-                )}
-
-                {/* Hide Visitors link for admins */}
-                {!isAdmin && (
-                  <li 
-                    className={`visitor ${isActiveRoute('/resident-dashboard') ? 'active' : ''}`}
-                    onClick={() => {
-                      navigate('/resident-dashboard');
-                      setIsMobileMenuOpen(false);
-                    }}>
-                     Visitors
-                  </li>
-                )}
-              </>
-            )}
 
             {isAdmin && (
               <li 

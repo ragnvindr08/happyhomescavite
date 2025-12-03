@@ -218,6 +218,7 @@ const LoginPage: React.FC<LoginPageProps> = () => {
   const [errorMsg, setErrorMsg] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [failedLoginAttempts, setFailedLoginAttempts] = useState(0);
   const [searchParams] = useSearchParams();
   const [viewOnly, setViewOnly] = useState(true); // ✅ Start in View Only mode
   
@@ -245,6 +246,7 @@ const LoginPage: React.FC<LoginPageProps> = () => {
   const [newComment, setNewComment] = useState('');
   const [commentLoading, setCommentLoading] = useState(false);
   const [fetchingComments, setFetchingComments] = useState(false);
+  const [showScrollToTop, setShowScrollToTop] = useState(false);
 
   const navigate = useNavigate();
 
@@ -281,6 +283,26 @@ const LoginPage: React.FC<LoginPageProps> = () => {
       setViewOnly(false);
     }
   }, [searchParams]);
+
+  // Handle scroll to top button visibility
+  useEffect(() => {
+    const handleScroll = () => {
+      // Show button when user scrolls down more than 300px
+      const scrollPosition = window.scrollY || document.documentElement.scrollTop;
+      setShowScrollToTop(scrollPosition > 300);
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Scroll to top function
+  const scrollToTop = () => {
+    window.scrollTo({
+      top: 0,
+      behavior: 'smooth'
+    });
+  };
 
   // Fetch Bulletin Board, News, Alerts, and Media
   useEffect(() => {
@@ -347,19 +369,48 @@ const LoginPage: React.FC<LoginPageProps> = () => {
         }));
         setBlogStories(convertedBlogs);
 
-        // Create media items from houses with images (only real data, no dummy data)
-        const media: MediaItem[] = housesData
-          .filter((house: any) => house.image)
-          .map((house: any, index: number) => ({
-            id: house.id || index,
-            title: house.title || `House ${house.id}`,
-            description: house.description || house.location || 'Beautiful home in Happy Homes community',
-            imageUrl: house.image.startsWith('http') ? house.image : `http://127.0.0.1:8000${house.image}`,
-            type: 'image' as const,
-            date: house.created_at || new Date().toISOString(),
+        // Fetch community media from API (same as HomePage and AdminBulletin)
+        let communityMediaData: any[] = [];
+        try {
+          const mediaRes = await fetch('http://127.0.0.1:8000/api/community-media/?is_public=true');
+          if (mediaRes.ok) {
+            communityMediaData = await mediaRes.json();
+          }
+        } catch (err) {
+          console.warn('Could not fetch community media (backend may not be running)');
+        }
+
+        // Convert API media to MediaItem format (same as HomePage and AdminBulletin)
+        const apiMedia: MediaItem[] = communityMediaData
+          .filter((item: any) => item.is_approved && item.is_public)
+          .map((item: any) => ({
+            id: item.id,
+            title: item.title,
+            description: item.description || '',
+            imageUrl: item.media_url 
+              ? (item.media_url.startsWith('http') ? item.media_url : `http://127.0.0.1:8000${item.media_url}`)
+              : '',
+            type: item.media_type as 'image' | 'video',
+            date: item.created_at || new Date().toISOString(),
           }));
 
-        setMediaItems(media);
+        // Fallback: Use house images if no community media available
+        if (apiMedia.length === 0) {
+          const houseMedia: MediaItem[] = housesData
+            .filter((house: any) => house.image)
+            .map((house: any, index: number) => ({
+              id: house.id || index,
+              title: house.title || `House ${house.id}`,
+              description: house.description || house.location || 'Beautiful home in Happy Homes community',
+              imageUrl: house.image.startsWith('http') ? house.image : `http://127.0.0.1:8000${house.image}`,
+              type: 'image' as const,
+              date: house.created_at || new Date().toISOString(),
+            }));
+          setMediaItems(houseMedia);
+        } else {
+          // Use API media (limit to 30 items like HomePage)
+          setMediaItems(apiMedia.slice(0, 30));
+        }
       } catch (err: any) {
         // Only log if it's not a network error (backend not running)
         if (err?.message && !err.message.includes('Failed to fetch') && !err.message.includes('NetworkError')) {
@@ -600,6 +651,8 @@ const LoginPage: React.FC<LoginPageProps> = () => {
 
       if (!res.ok) {
         if (res.status === 401) {
+          // Increment failed login attempts
+          setFailedLoginAttempts(prev => prev + 1);
           throw new Error('Invalid username or password');
         } else {
           throw new Error(`Server error: ${res.status}`);
@@ -607,6 +660,8 @@ const LoginPage: React.FC<LoginPageProps> = () => {
       }
       const data: { access: string } = await res.json();
 
+      // Reset failed login attempts on successful login
+      setFailedLoginAttempts(0);
       setToken(data.access);
       
       // Check if user is admin and redirect accordingly
@@ -659,6 +714,7 @@ const LoginPage: React.FC<LoginPageProps> = () => {
           justifyContent: 'center',
           alignItems: 'center',
           padding: '20px',
+          paddingTop: '100px',
           position: 'relative',
           overflow: 'hidden',
         }}
@@ -704,20 +760,31 @@ const LoginPage: React.FC<LoginPageProps> = () => {
     borderRadius: '8px',
     textAlign: 'center',
     maxWidth: '1000px',
+    width: '100%',
+    margin: '0 auto',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: '30px',
   }}
   > 
-    <div style={{ flex: 1, textAlign: 'center' }}>
+    <div style={{ 
+      width: '100%',
+      textAlign: 'center',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center'
+    }}>
       <p style={{
         fontSize: '1.5rem', 
         textAlign: 'center',
         color: 'white',
         marginBottom: '-20px', 
         fontWeight: 'bold',
-        textShadow: '1px 1px 3px rgba(0, 0, 0, 0.3)'
+        textShadow: '1px 1px 3px rgba(0, 0, 0, 0.3)',
+        width: '100%'
       }}>Happy Homes Community</p>
       <h2 style={{ 
         fontSize: '5.5rem', 
@@ -725,7 +792,10 @@ const LoginPage: React.FC<LoginPageProps> = () => {
         color: 'white', 
         textAlign: 'center', 
         fontWeight: 'bold',
-        textShadow: '2px 2px 4px rgba(0, 0, 0, 0.4)'
+        textShadow: '2px 2px 4px rgba(0, 0, 0, 0.4)',
+        width: '100%',
+        marginLeft: 'auto',
+        marginRight: 'auto'
       }}>
         Happy Homes <br /> Where Life Connects
       </h2>
@@ -734,7 +804,8 @@ const LoginPage: React.FC<LoginPageProps> = () => {
         marginBottom: '20px', 
         textAlign: 'center',
         fontSize: '1.4rem',
-        textShadow: '1px 1px 3px rgba(0, 0, 0, 0.3)'
+        textShadow: '1px 1px 3px rgba(0, 0, 0, 0.3)',
+        width: '100%'
       }}>  
         Home is not a place… it's a feeling. Welcome to the happiest one.
       </p>
@@ -882,6 +953,20 @@ const LoginPage: React.FC<LoginPageProps> = () => {
               </div>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Find Your Dream Home Advertisement */}
+      <div className="dream-home-advertisement">
+        <div className="dream-home-content">
+          <h2 className="dream-home-title">Find Your Dream Home Today?</h2>
+          <p className="dream-home-subtitle">Browse our exclusive listings and discover your perfect home in the community</p>
+          <button 
+            className="dream-home-btn"
+            onClick={() => navigate('/register')}
+          >
+            Get Started
+          </button>
         </div>
       </div>
 
@@ -1145,17 +1230,12 @@ const LoginPage: React.FC<LoginPageProps> = () => {
         </div>
         
         {/* Community Gallery */}
-        <div className="section-container media-gallery-container" style={{ marginTop: '40px' }}>
+        <div className="section-container media-gallery-container">
           <div className="section-header">
             <p className="section-label">Community Gallery</p>
             <h2 className="section-title">Pictures & Videos</h2>
           </div>
-          {loading ? (
-            <div className="loading-spinner">
-              <div className="spinner"></div>
-              <p>Loading gallery...</p>
-            </div>
-          ) : mediaItems.length > 0 ? (
+          {mediaItems.length > 0 ? (
             <>
               {/* Navigation Buttons */}
               <div className="gallery-navigation">
@@ -1271,15 +1351,28 @@ const LoginPage: React.FC<LoginPageProps> = () => {
             </>
           ) : (
             <div className="empty-state">
-              <div className="empty-icon">🖼️</div>
               <p>No media available at the moment.</p>
             </div>
           )}
         </div>
       </div>
 
+      {/* Join Happy Homes Community Advertisement */}
+      <div className="join-community-advertisement">
+        <div className="join-community-content">
+          <h2 className="join-community-title">Join Happy Homes Community</h2>
+          <p className="join-community-subtitle">Create an account to list your property, book amenities, and connect with neighbors</p>
+          <button 
+            className="join-community-btn"
+            onClick={() => navigate('/register')}
+          >
+            Sign Up Free
+          </button>
+        </div>
+      </div>
+
       {/* Our Main Focus Section */}
-<div
+      <div
         className="section-container"
   style={{
           marginTop: '0',
@@ -1289,24 +1382,13 @@ const LoginPage: React.FC<LoginPageProps> = () => {
         <p style={{ color: '#4CAF50', fontWeight: 'bold', marginBottom: '10px', textAlign: 'center' }}>Our Services</p>
         <h2 style={{ fontSize: '2.5rem', marginBottom: '40px', fontWeight: 'bold', textAlign: 'center' }}>Our Main Focus</h2>
 
-  <div
-    style={{
-      display: 'flex',
-      flexWrap: 'wrap',
-      justifyContent: 'center',
-      gap: '20px',
-            width: '100%',
-            maxWidth: '1200px',
-    }}
-  >
+  <div className="services-grid-3x3">
     {/* Buy a Home */}
     <div
       style={{
         background: 'white',
         padding: '30px',
         borderRadius: '8px',
-        flex: '1 1 250px',
-        maxWidth: '300px',
         textAlign: 'left',
         boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
       }}
@@ -1332,8 +1414,6 @@ const LoginPage: React.FC<LoginPageProps> = () => {
         background: 'white',
         padding: '30px',
         borderRadius: '8px',
-        flex: '1 1 250px',
-        maxWidth: '300px',
         textAlign: 'left',
         boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
       }}
@@ -1359,8 +1439,6 @@ const LoginPage: React.FC<LoginPageProps> = () => {
         background: 'white',
         padding: '30px',
         borderRadius: '8px',
-        flex: '1 1 250px',
-        maxWidth: '300px',
         textAlign: 'left',
         boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
       }}
@@ -1386,8 +1464,6 @@ const LoginPage: React.FC<LoginPageProps> = () => {
         background: 'white',
         padding: '30px',
         borderRadius: '8px',
-        flex: '1 1 250px',
-        maxWidth: '300px',
         textAlign: 'left',
         boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
         cursor: 'pointer',
@@ -1416,8 +1492,6 @@ const LoginPage: React.FC<LoginPageProps> = () => {
         background: 'white',
         padding: '30px',
         borderRadius: '8px',
-        flex: '1 1 250px',
-        maxWidth: '300px',
         textAlign: 'left',
         boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
         cursor: 'pointer',
@@ -1446,8 +1520,6 @@ const LoginPage: React.FC<LoginPageProps> = () => {
         background: 'white',
         padding: '30px',
         borderRadius: '8px',
-        flex: '1 1 250px',
-        maxWidth: '300px',
         textAlign: 'left',
         boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
       }}
@@ -1675,6 +1747,46 @@ const LoginPage: React.FC<LoginPageProps> = () => {
 
 
       {showForgotPassword && <ForgotPassword onClose={() => setShowForgotPassword(false)} />}
+
+      {/* Scroll to Top Button - Only show in view-only mode */}
+      {viewOnly && showScrollToTop && (
+        <button
+          onClick={scrollToTop}
+          style={{
+            position: 'fixed',
+            bottom: '30px',
+            right: '30px',
+            width: '50px',
+            height: '50px',
+            borderRadius: '50%',
+            backgroundColor: '#2e6F40',
+            color: 'white',
+            border: 'none',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '24px',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+            zIndex: 1000,
+            transition: 'all 0.3s ease',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = '#1e5a30';
+            e.currentTarget.style.transform = 'scale(1.1)';
+            e.currentTarget.style.boxShadow = '0 6px 16px rgba(0, 0, 0, 0.4)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = '#2e6F40';
+            e.currentTarget.style.transform = 'scale(1)';
+            e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.3)';
+          }}
+          aria-label="Scroll to top"
+        >
+          ↑
+        </button>
+      )}
+
       <Footer />
     </>
   );

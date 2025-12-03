@@ -66,13 +66,12 @@
 
 /* Profile Menu Dropdown */
 .admin-profile-menu {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
+  position: fixed;
   width: 280px;
   background: #ffffff;
   border: 1px solid #e0e0e0;
   border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   z-index: 10001;
   overflow: hidden;
   animation: slideDown 0.2s ease;
@@ -326,9 +325,7 @@
 
   .admin-profile-menu {
     width: 250px;
-    left: 0;
     transform: none;
-    right: auto;
   }
 
   .change-password-modal {

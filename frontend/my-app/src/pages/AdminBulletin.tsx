@@ -66,6 +66,7 @@ interface Post {
   id: number;
   title: string;
   body: string;
+  image?: string | null;
   lat?: number | null;
   lng?: number | null;
 }
@@ -82,46 +83,7 @@ interface BlogComment {
   updated_at: string;
 }
 
-interface House {
-  id: number;
-  title: string;
-  description: string;
-  price: number;
-  location: string;
-  listing_type?: 'sale' | 'rent';
-  image?: string;
-  user?: {
-    id: number;
-    username: string;
-    first_name: string;
-    last_name: string;
-    email: string;
-  };
-}
 
-interface Booking {
-  id: number;
-  facility_id: number;
-  facility_name: string;
-  date: string;
-  start_time: string;
-  end_time: string;
-  status: "pending" | "approved" | "rejected";
-  user_name?: string;
-}
-
-interface Pin {
-  id: number;
-  name: string;
-  latitude: number;
-  longitude: number;
-  status?: string;
-  description?: string;
-  price?: string;
-  occupant?: string;
-  image?: string;
-  square_meter?: number | string;
-}
 
 interface CommunityMediaItem {
   id?: number;
@@ -172,7 +134,19 @@ interface VisitorRequestItem {
   updated_at: string;
 }
 
-type TabType = 'announcements' | 'news-alerts' | 'blog-stories' | 'houses' | 'bookings' | 'pins' | 'media-gallery';
+interface EmergencyContact {
+  id?: number;
+  name: string;
+  phone: string;
+  description?: string;
+  category: string;
+  is_active: boolean;
+  order: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+type TabType = 'announcements' | 'blog-stories' | 'media-gallery' | 'emergency-contacts';
 
 const AdminBulletin: React.FC = () => {
   const navigate = useNavigate();
@@ -215,28 +189,9 @@ const AdminBulletin: React.FC = () => {
     title: '',
     body: ''
   });
-
-  // Houses states
-  const [houses, setHouses] = useState<House[]>([]);
-  const [houseSearch, setHouseSearch] = useState('');
-  const [houseFilter, setHouseFilter] = useState<'all' | 'sale' | 'rent'>('all');
-  const [modalHouse, setModalHouse] = useState<House | null>(null);
-  const [editMode, setEditMode] = useState(false);
-  const [editTitle, setEditTitle] = useState('');
-  const [editPrice, setEditPrice] = useState('');
-  const [editLocation, setEditLocation] = useState('');
-  const [editDescription, setEditDescription] = useState('');
-  const [editImage, setEditImage] = useState<File | null>(null);
-  const [editImagePreview, setEditImagePreview] = useState<string | null>(null);
-
-  // Bookings states
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [selectedDate, setSelectedDate] = useState<string>("");
-  const [bookingSearchQuery, setBookingSearchQuery] = useState<string>("");
-
-  // Pins states
-  const [pins, setPins] = useState<Pin[]>([]);
-  const [pinSearch, setPinSearch] = useState('');
+  const [postImageFile, setPostImageFile] = useState<File | null>(null);
+  const [postImagePreview, setPostImagePreview] = useState<string | null>(null);
+  const postImageInputRef = useRef<HTMLInputElement>(null);
 
   // Bulletin Comments states
   const [selectedBulletin, setSelectedBulletin] = useState<BulletinItem | null>(null);
@@ -276,6 +231,20 @@ const AdminBulletin: React.FC = () => {
   const [visitorRequests, setVisitorRequests] = useState<VisitorRequestItem[]>([]);
   const [visitorRequestFilter, setVisitorRequestFilter] = useState<'all' | 'pending_admin' | 'approved' | 'declined'>('all');
   const [visitorRequestSearch, setVisitorRequestSearch] = useState('');
+
+  // Emergency Contacts states
+  const [emergencyContacts, setEmergencyContacts] = useState<EmergencyContact[]>([]);
+  const [emergencyContactEditingId, setEmergencyContactEditingId] = useState<number | null>(null);
+  const [showEmergencyContactForm, setShowEmergencyContactForm] = useState(false);
+  const [emergencyContactSearchTerm, setEmergencyContactSearchTerm] = useState('');
+  const [emergencyContactFormData, setEmergencyContactFormData] = useState<EmergencyContact>({
+    name: '',
+    phone: '',
+    description: '',
+    category: 'general',
+    is_active: true,
+    order: 0
+  });
 
   // Check authentication on mount
   useEffect(() => {
@@ -328,11 +297,9 @@ const AdminBulletin: React.FC = () => {
         fetchBulletins(),
         fetchNewsAndAlerts(),
         fetchPosts(),
-        fetchHouses(),
-        fetchBookings(),
-        fetchPins(),
         fetchMedia(),
-        fetchVisitorRequests()
+        fetchVisitorRequests(),
+        fetchEmergencyContacts()
       ]);
     } catch (err) {
       console.error('Error fetching data:', err);
@@ -400,56 +367,6 @@ const AdminBulletin: React.FC = () => {
     }
   };
 
-  const fetchHouses = async () => {
-    try {
-      const token = getToken();
-      if (!token) {
-        navigate('/login');
-        return;
-      }
-      const response = await axios.get(`${API_URL}/houses/`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setHouses(Array.isArray(response.data) ? response.data : []);
-    } catch (err: any) {
-      console.error('Error fetching houses:', err);
-      if (err.response?.status === 401) {
-        toast.error('Session expired. Please login again.');
-        logout();
-        navigate('/login');
-      }
-    }
-  };
-
-  const fetchBookings = async () => {
-    try {
-      const token = getToken();
-      if (!token) {
-        navigate('/login');
-        return;
-      }
-      const response = await axios.get(`${API_URL}/bookings/`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setBookings(Array.isArray(response.data) ? response.data : []);
-    } catch (err: any) {
-      console.error('Error fetching bookings:', err);
-      if (err.response?.status === 401) {
-        toast.error('Session expired. Please login again.');
-        logout();
-        navigate('/login');
-      }
-    }
-  };
-
-  const fetchPins = async () => {
-    try {
-      const response = await axios.get(`${API_URL}/pins/`);
-      setPins(Array.isArray(response.data) ? response.data : []);
-    } catch (err: any) {
-      console.error('Error fetching pins:', err);
-    }
-  };
 
   // Media Gallery fetch function
   const fetchMedia = async () => {
@@ -708,6 +625,188 @@ const AdminBulletin: React.FC = () => {
     }
   };
 
+  // Emergency Contacts fetch function
+  const fetchEmergencyContacts = async () => {
+    try {
+      const token = getToken();
+      if (!token) {
+        navigate('/login');
+        return;
+      }
+      const response = await axios.get(`${API_URL}/emergency-contacts/`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = Array.isArray(response.data) ? response.data : (response.data.results || []);
+      setEmergencyContacts(data);
+    } catch (err: any) {
+      console.error('Error fetching emergency contacts:', err);
+      console.error('Error response:', err.response?.data);
+      
+      if (err.response?.status === 401) {
+        const errorDetail = err.response?.data?.detail || '';
+        if (errorDetail.includes('token') || errorDetail.includes('not valid') || errorDetail.includes('authentication')) {
+          toast.error('Your session has expired. Please login again.');
+          logout();
+          navigate('/login');
+          return;
+        }
+        toast.error('Session expired. Please login again.');
+        logout();
+        navigate('/login');
+      } else if (err.response?.status === 500) {
+        // 500 error usually means database table doesn't exist - migration not run
+        console.error('Server error - this might indicate the database migration needs to be run');
+        // Don't show error toast for 500 on fetch, just log it
+        // The user will see an empty list instead
+        setEmergencyContacts([]);
+      } else {
+        // Other errors
+        const errorMsg = err.response?.data?.detail || err.response?.data?.message || 'Failed to fetch emergency contacts';
+        console.error('Error message:', errorMsg);
+        setEmergencyContacts([]);
+      }
+    }
+  };
+
+  // Emergency Contacts handlers
+  const handleEmergencyContactInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value, type } = e.target;
+    setEmergencyContactFormData(prev => ({
+      ...prev,
+      [name]: type === 'number' ? parseInt(value) || 0 : 
+              type === 'checkbox' ? (e.target as HTMLInputElement).checked : value
+    }));
+  };
+
+  const handleEmergencyContactEdit = (contact: EmergencyContact) => {
+    setEmergencyContactFormData(contact);
+    setEmergencyContactEditingId(contact.id || null);
+    setShowEmergencyContactForm(true);
+  };
+
+  const handleEmergencyContactCancel = () => {
+    setEmergencyContactEditingId(null);
+    setShowEmergencyContactForm(false);
+    setEmergencyContactFormData({
+      name: '',
+      phone: '',
+      description: '',
+      category: 'general',
+      is_active: true,
+      order: 0
+    });
+  };
+
+  const handleEmergencyContactSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // Validate required fields
+    if (!emergencyContactFormData.name || !emergencyContactFormData.phone) {
+      toast.error('Please fill in all required fields (Name and Phone)');
+      return;
+    }
+
+    try {
+      const token = getToken();
+      if (!token) {
+        navigate('/login');
+        return;
+      }
+
+      // Prepare data - ensure all fields are properly formatted
+      const submitData = {
+        name: emergencyContactFormData.name.trim(),
+        phone: emergencyContactFormData.phone.trim(),
+        description: emergencyContactFormData.description?.trim() || '',
+        category: emergencyContactFormData.category || 'general',
+        is_active: emergencyContactFormData.is_active !== undefined ? emergencyContactFormData.is_active : true,
+        order: emergencyContactFormData.order || 0
+      };
+
+      if (emergencyContactEditingId) {
+        // Update existing
+        await axios.put(
+          `${API_URL}/emergency-contacts/${emergencyContactEditingId}/`,
+          submitData,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        toast.success('Emergency contact updated successfully');
+      } else {
+        // Create new
+        await axios.post(
+          `${API_URL}/emergency-contacts/`,
+          submitData,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        toast.success('Emergency contact created successfully');
+      }
+
+      handleEmergencyContactCancel();
+      fetchEmergencyContacts();
+    } catch (err: any) {
+      console.error('Error saving emergency contact:', err);
+      console.error('Error response:', err.response?.data);
+      
+      // Handle 401 Unauthorized - Token expired or invalid
+      if (err.response?.status === 401) {
+        const errorDetail = err.response?.data?.detail || '';
+        if (errorDetail.includes('token') || errorDetail.includes('not valid') || errorDetail.includes('authentication')) {
+          toast.error('Your session has expired. Please login again.');
+          logout(); // Clear invalid token
+          navigate('/login');
+          return;
+        }
+      }
+      
+      // Better error message handling
+      let errorMsg = 'Failed to save emergency contact';
+      if (err.response?.data) {
+        if (err.response.data.detail) {
+          errorMsg = err.response.data.detail;
+        } else if (err.response.data.message) {
+          errorMsg = err.response.data.message;
+        } else if (typeof err.response.data === 'string') {
+          errorMsg = err.response.data;
+        } else if (err.response.data.error) {
+          errorMsg = err.response.data.error;
+        } else {
+          // Show field errors if available
+          const fieldErrors = Object.entries(err.response.data)
+            .map(([field, errors]: [string, any]) => `${field}: ${Array.isArray(errors) ? errors.join(', ') : errors}`)
+            .join('; ');
+          if (fieldErrors) {
+            errorMsg = fieldErrors;
+          }
+        }
+      }
+      
+      toast.error(errorMsg);
+    }
+  };
+
+  const handleEmergencyContactDelete = async (id: number) => {
+    if (!window.confirm('Are you sure you want to delete this emergency contact?')) {
+      return;
+    }
+
+    try {
+      const token = getToken();
+      if (!token) {
+        navigate('/login');
+        return;
+      }
+
+      await axios.delete(`${API_URL}/emergency-contacts/${id}/`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      toast.success('Emergency contact deleted successfully');
+      fetchEmergencyContacts();
+    } catch (err: any) {
+      console.error('Error deleting emergency contact:', err);
+      toast.error('Failed to delete emergency contact');
+    }
+  };
+
   // Visitor Request handlers
   const handleApproveVisitorRequest = async (id: number) => {
     try {
@@ -918,6 +1017,19 @@ const AdminBulletin: React.FC = () => {
   };
 
   // Blog Posts handlers
+  const handlePostImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setPostImageFile(file);
+      // Create preview
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPostImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handlePostSave = async () => {
     if (!postFormData.title.trim() || !postFormData.body.trim()) {
       toast.error('Please fill in both title and body.');
@@ -934,106 +1046,61 @@ const AdminBulletin: React.FC = () => {
         toast.info('Post editing requires backend support. Please create a new post instead.');
         return;
       }
-      await axios.post(`${API_URL}/posts/`, {
+      
+      // Use FormData if image exists, otherwise use JSON
+      const formData = new FormData();
+      formData.append('title', postFormData.title);
+      formData.append('body', postFormData.body);
+      if (postFormData.lat) formData.append('lat', postFormData.lat.toString());
+      if (postFormData.lng) formData.append('lng', postFormData.lng.toString());
+      if (postImageFile) {
+        formData.append('image', postImageFile);
+      }
+
+      const headers: any = { Authorization: `Bearer ${token}` };
+      if (!postImageFile) {
+        headers['Content-Type'] = 'application/json';
+      }
+
+      await axios.post(`${API_URL}/posts/`, postImageFile ? formData : {
         title: postFormData.title,
         body: postFormData.body,
         lat: postFormData.lat,
         lng: postFormData.lng
       }, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers
       });
       toast.success('Post created successfully!');
       await fetchPosts();
       setShowPostForm(false);
       setPostEditingId(null);
       setPostFormData({ id: 0, title: '', body: '' });
+      setPostImageFile(null);
+      setPostImagePreview(null);
+      if (postImageInputRef.current) {
+        postImageInputRef.current.value = '';
+      }
     } catch (err: any) {
       toast.error(err.response?.data?.detail || 'Failed to save post.');
     }
   };
 
   const handlePostDelete = async (id: number) => {
-    toast.info('Post deletion requires backend support. Please contact the administrator.');
-  };
-
-  // Houses handlers
-  const handleHouseDelete = async (id: number) => {
-    if (!window.confirm('Are you sure you want to delete this house?')) return;
+    if (!window.confirm('Are you sure you want to delete this post?')) return;
     try {
       const token = getToken();
-      await axios.delete(`${API_URL}/houses/${id}/`, {
+      if (!token) {
+        toast.error('You must be logged in to delete posts.');
+        return;
+      }
+      await axios.delete(`${API_URL}/posts/${id}/`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      toast.success('House deleted successfully');
-      setHouses(houses.filter(h => h.id !== id));
-      setModalHouse(null);
+      toast.success('Post deleted successfully!');
+      await fetchPosts();
     } catch (err: any) {
-      toast.error('Failed to delete house');
-    }
-  };
-
-  const handleHouseSaveEdit = async () => {
-    if (!modalHouse) return;
-    const formData = new FormData();
-    formData.append('title', editTitle);
-    formData.append('price', editPrice);
-    formData.append('location', editLocation);
-    formData.append('description', editDescription);
-    if (editImage) formData.append('image', editImage);
-    try {
-      const token = getToken();
-      const res = await axios.patch(`${API_URL}/houses/${modalHouse.id}/`, formData, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setHouses(houses.map(h => (h.id === res.data.id ? res.data : h)));
-      setModalHouse(res.data);
-      setEditMode(false);
-      toast.success('House updated successfully');
-    } catch (err: any) {
-      toast.error('Failed to update house');
-    }
-  };
-
-  // Bookings handlers
-  const handleBookingAction = async (id: number, action: "approved" | "rejected") => {
-    try {
-      const token = getToken();
-      await axios.patch(`${API_URL}/bookings/${id}/`, { status: action }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setBookings(prev => prev.map(b => (b.id === id ? { ...b, status: action } : b)));
-      toast.success(`Booking ${action} successfully!`);
-    } catch (err: any) {
-      toast.error("Failed to update booking status.");
-    }
-  };
-
-  const handleBookingDelete = async (id: number) => {
-    if (!window.confirm("Are you sure you want to delete this booking?")) return;
-    try {
-      const token = getToken();
-      await axios.delete(`${API_URL}/bookings/${id}/`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setBookings(prev => prev.filter(b => b.id !== id));
-      toast.success("Booking deleted successfully.");
-    } catch (err: any) {
-      toast.error("Failed to delete booking.");
-    }
-  };
-
-  // Pins handlers
-  const handlePinDelete = async (id: number) => {
-    if (!window.confirm('Are you sure you want to delete this pin?')) return;
-    try {
-      const token = getToken();
-      await axios.delete(`${API_URL}/pins/${id}/`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      toast.success('Pin deleted successfully!');
-      await fetchPins();
-    } catch (err: any) {
-      toast.error('Failed to delete pin.');
+      console.error('Error deleting post:', err);
+      toast.error(err.response?.data?.detail || 'Failed to delete post.');
     }
   };
 
@@ -1046,29 +1113,6 @@ const AdminBulletin: React.FC = () => {
                          (bulletinFilterStatus === 'draft' && !b.is_published);
     return matchesSearch && matchesFilter;
   });
-
-  const filteredHouses = houses.filter(h => {
-    const matchesSearch = h.title.toLowerCase().includes(houseSearch.toLowerCase()) ||
-                         h.location.toLowerCase().includes(houseSearch.toLowerCase()) ||
-                         h.description.toLowerCase().includes(houseSearch.toLowerCase());
-    const matchesFilter = houseFilter === 'all' ||
-                         (houseFilter === 'sale' && h.listing_type === 'sale') ||
-                         (houseFilter === 'rent' && h.listing_type === 'rent');
-    return matchesSearch && matchesFilter;
-  });
-
-  const filteredBookings = bookings.filter(b => {
-    const matchesDate = !selectedDate || b.date === selectedDate;
-    const matchesSearch = b.facility_name.toLowerCase().includes(bookingSearchQuery.toLowerCase()) ||
-                         (b.user_name?.toLowerCase().includes(bookingSearchQuery.toLowerCase()) ?? false) ||
-                         b.status.toLowerCase().includes(bookingSearchQuery.toLowerCase());
-    return matchesDate && matchesSearch;
-  });
-
-  const filteredPins = pins.filter(p => 
-    p.name.toLowerCase().includes(pinSearch.toLowerCase()) ||
-    (p.description?.toLowerCase().includes(pinSearch.toLowerCase()) ?? false)
-  );
 
   const filteredMedia = mediaItems.filter(m => {
     const matchesSearch = m.title.toLowerCase().includes(mediaSearchTerm.toLowerCase()) ||
@@ -1254,18 +1298,12 @@ const AdminBulletin: React.FC = () => {
     switch (activeTab) {
       case 'announcements':
         return renderAnnouncementsTab();
-      case 'news-alerts':
-        return renderNewsAlertsTab();
       case 'blog-stories':
         return renderBlogStoriesTab();
-      case 'houses':
-        return renderHousesTab();
-      case 'bookings':
-        return renderBookingsTab();
-      case 'pins':
-        return renderPinsTab();
       case 'media-gallery':
         return renderMediaGalleryTab();
+      case 'emergency-contacts':
+        return renderEmergencyContactsTab();
       default:
         return renderAnnouncementsTab();
     }
@@ -1446,101 +1484,21 @@ const AdminBulletin: React.FC = () => {
     );
   };
 
-  const renderNewsAlertsTab = () => {
-    const allItems = [
-      ...newsItems.map(n => ({ ...n, type: 'news' as const })),
-      ...alertItems.map(a => ({ ...a, type: 'alert' as const }))
-    ].filter(item => newsAlertFilter === 'all' || item.type === newsAlertFilter);
-
-    return (
-      <div className="bulletin-container">
-        <div className="bulletin-controls">
-          <div className="bulletin-filters">
-            <button className={`bulletin-filter-btn ${newsAlertFilter === 'all' ? 'active' : ''}`} onClick={() => setNewsAlertFilter('all')}>All</button>
-            <button className={`bulletin-filter-btn ${newsAlertFilter === 'news' ? 'active' : ''}`} onClick={() => setNewsAlertFilter('news')}>News</button>
-            <button className={`bulletin-filter-btn ${newsAlertFilter === 'alert' ? 'active' : ''}`} onClick={() => setNewsAlertFilter('alert')}>Alerts</button>
-          </div>
-          <button onClick={() => setShowNewsAlertModal(true)} className="bulletin-add-btn">
-            <AddIcon /> Add New
-          </button>
-        </div>
-
-        {showNewsAlertModal && (
-          <div className="bulletin-form-card">
-            <h2 className="bulletin-form-title">Create {newsAlertForm.kind === 'news' ? 'News' : 'Alert'}</h2>
-            <form onSubmit={handleNewsAlertSubmit} className="bulletin-form-content">
-              <div className="bulletin-form-group">
-                <label className="bulletin-form-label">Type</label>
-                <select value={newsAlertForm.kind} onChange={(e) => setNewsAlertForm({ ...newsAlertForm, kind: e.target.value as 'news' | 'alert' })} className="bulletin-form-input">
-                  <option value="news">News</option>
-                  <option value="alert">Alert</option>
-                </select>
-              </div>
-              <div className="bulletin-form-group">
-                <label className="bulletin-form-label">Title <span className="required">*</span></label>
-                <input type="text" value={newsAlertForm.title} onChange={(e) => setNewsAlertForm({ ...newsAlertForm, title: e.target.value })} className="bulletin-form-input" required />
-              </div>
-              <div className="bulletin-form-group">
-                <label className="bulletin-form-label">Content <span className="required">*</span></label>
-                <textarea value={newsAlertForm.body} onChange={(e) => setNewsAlertForm({ ...newsAlertForm, body: e.target.value })} rows={10} className="bulletin-form-textarea" required />
-              </div>
-              {newsAlertForm.kind === 'alert' && (
-                <div className="bulletin-form-group">
-                  <label className="bulletin-form-checkbox">
-                    <input type="checkbox" checked={newsAlertForm.urgent} onChange={(e) => setNewsAlertForm({ ...newsAlertForm, urgent: e.target.checked })} className="bulletin-checkbox" />
-                    <span className="bulletin-checkbox-label">Urgent/Critical</span>
-                  </label>
-                </div>
-              )}
-              <div className="bulletin-form-actions">
-                <button type="button" onClick={() => { setShowNewsAlertModal(false); setNewsAlertForm({ kind: 'news', title: '', body: '', urgent: false }); }} className="bulletin-btn-secondary">
-                  <CancelIcon /> Cancel
-                </button>
-                <button type="submit" className="bulletin-btn-primary">
-                  <SaveIcon /> Create
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
-
-        <div className="bulletin-list">
-          {allItems.length === 0 ? (
-            <div className="bulletin-empty">
-              <p className="bulletin-empty-text">No {newsAlertFilter === 'all' ? 'items' : newsAlertFilter} found.</p>
-            </div>
-          ) : (
-            allItems.map((item) => (
-              <div key={`${item.type}-${item.id}`} className="bulletin-card">
-                <div className="bulletin-card-header">
-                  <div className="bulletin-card-title-section">
-                    <h3 className="bulletin-card-title">{item.type === 'news' ? '📰' : '🚨'} {item.type === 'news' ? item.title : item.title}</h3>
-                    <div className="bulletin-card-badges">
-                      <span className="bulletin-badge published-badge">{item.type === 'news' ? 'News' : 'Alert'}</span>
-                    </div>
-                  </div>
-                  <div className="bulletin-card-actions">
-                    <button onClick={() => handleNewsAlertDelete(item.id, item.type)} className="bulletin-action-btn delete">
-                      <DeleteIcon />
-                    </button>
-                  </div>
-                </div>
-                <div className="bulletin-card-content">
-                  <p className="bulletin-card-text">{item.type === 'news' ? item.content : item.message}</p>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-    );
-  };
 
   const renderBlogStoriesTab = () => {
     return (
       <div className="bulletin-container">
         <div className="bulletin-controls">
-          <button onClick={() => { setShowPostForm(true); setPostEditingId(null); setPostFormData({ id: 0, title: '', body: '' }); }} className="bulletin-add-btn">
+          <button onClick={() => { 
+            setShowPostForm(true); 
+            setPostEditingId(null); 
+            setPostFormData({ id: 0, title: '', body: '' }); 
+            setPostImageFile(null);
+            setPostImagePreview(null);
+            if (postImageInputRef.current) {
+              postImageInputRef.current.value = '';
+            }
+          }} className="bulletin-add-btn">
             <AddIcon /> Add New Post
           </button>
         </div>
@@ -1557,8 +1515,111 @@ const AdminBulletin: React.FC = () => {
                 <label className="bulletin-form-label">Body <span className="required">*</span></label>
                 <textarea value={postFormData.body} onChange={(e) => setPostFormData({ ...postFormData, body: e.target.value })} rows={10} className="bulletin-form-textarea" />
               </div>
+              <div className="bulletin-form-group">
+                <label className="bulletin-form-label">Blog Image</label>
+                
+                {/* Hidden file input */}
+                <input
+                  ref={postImageInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePostImageChange}
+                  style={{ display: 'none' }}
+                />
+                
+                {/* Custom upload button */}
+                <button
+                  type="button"
+                  onClick={() => postImageInputRef.current?.click()}
+                  style={{
+                    width: '100%',
+                    padding: '12px 20px',
+                    backgroundColor: postImageFile ? '#28a745' : '#2e6F40',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontSize: '14px',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    transition: 'background-color 0.3s ease',
+                    marginBottom: '10px'
+                  }}
+                  onMouseOver={(e) => {
+                    if (!postImageFile) {
+                      e.currentTarget.style.backgroundColor = '#24572b';
+                    }
+                  }}
+                  onMouseOut={(e) => {
+                    if (!postImageFile) {
+                      e.currentTarget.style.backgroundColor = '#2e6F40';
+                    }
+                  }}
+                >
+                  {postImageFile ? (
+                    <>📁 Image Selected: {postImageFile.name} - Click to Change</>
+                  ) : (
+                    <>📤 Choose Image to Upload</>
+                  )}
+                </button>
+                
+                {/* Show selected file name */}
+                {postImageFile && (
+                  <div style={{ 
+                    marginBottom: '10px', 
+                    padding: '8px', 
+                    backgroundColor: '#f0f0f0', 
+                    borderRadius: '4px',
+                    fontSize: '13px',
+                    color: '#333'
+                  }}>
+                    <strong>Selected:</strong> {postImageFile.name} 
+                    ({Math.round(postImageFile.size / 1024)} KB)
+                  </div>
+                )}
+                
+                {/* Preview */}
+                {postImagePreview && (
+                  <div style={{ marginTop: '15px' }}>
+                    <img src={postImagePreview} alt="Preview" style={{ maxWidth: '100%', maxHeight: '300px', borderRadius: '8px', border: '2px solid #ddd' }} />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPostImageFile(null);
+                        setPostImagePreview(null);
+                        if (postImageInputRef.current) {
+                          postImageInputRef.current.value = '';
+                        }
+                      }}
+                      style={{
+                        marginTop: '10px',
+                        padding: '8px 16px',
+                        backgroundColor: '#dc3545',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '13px'
+                      }}
+                    >
+                      Remove Image
+                    </button>
+                  </div>
+                )}
+              </div>
               <div className="bulletin-form-actions">
-                <button onClick={() => { setShowPostForm(false); setPostEditingId(null); }} className="bulletin-btn-secondary">
+                <button onClick={() => { 
+                  setShowPostForm(false); 
+                  setPostEditingId(null);
+                  setPostImageFile(null);
+                  setPostImagePreview(null);
+                  if (postImageInputRef.current) {
+                    postImageInputRef.current.value = '';
+                  }
+                }} className="bulletin-btn-secondary">
                   <CancelIcon /> Cancel
                 </button>
                 <button onClick={handlePostSave} className="bulletin-btn-primary">
@@ -1597,212 +1658,6 @@ const AdminBulletin: React.FC = () => {
                 </div>
                 <div className="bulletin-card-content">
                   <p className="bulletin-card-text">{post.body}</p>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-    );
-  };
-
-  const renderHousesTab = () => {
-    return (
-      <div className="bulletin-container">
-        <div className="bulletin-controls">
-          <div className="bulletin-search">
-            <SearchIcon className="bulletin-search-icon" />
-            <input type="text" placeholder="Search houses..." value={houseSearch} onChange={(e) => setHouseSearch(e.target.value)} className="bulletin-search-input" />
-          </div>
-          <div className="bulletin-filters">
-            <button className={`bulletin-filter-btn ${houseFilter === 'all' ? 'active' : ''}`} onClick={() => setHouseFilter('all')}>All</button>
-            <button className={`bulletin-filter-btn ${houseFilter === 'sale' ? 'active' : ''}`} onClick={() => setHouseFilter('sale')}>For Sale</button>
-            <button className={`bulletin-filter-btn ${houseFilter === 'rent' ? 'active' : ''}`} onClick={() => setHouseFilter('rent')}>For Rent</button>
-          </div>
-        </div>
-
-        <div className="houses-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px', marginTop: '20px' }}>
-          {filteredHouses.length === 0 ? (
-            <div className="bulletin-empty" style={{ gridColumn: '1 / -1' }}>
-              <p className="bulletin-empty-text">No houses found.</p>
-            </div>
-          ) : (
-            filteredHouses.map((house) => (
-              <div key={house.id} className="house-grid-card" style={{ cursor: 'pointer', background: 'white', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }} onClick={() => { setModalHouse(house); setEditMode(false); setEditTitle(house.title); setEditPrice(house.price.toString()); setEditLocation(house.location); setEditDescription(house.description); setEditImagePreview(house.image || null); }}>
-                {house.image ? (
-                  <img src={house.image} alt={house.title} style={{ width: '100%', height: '200px', objectFit: 'cover' }} />
-                ) : (
-                  <div style={{ width: '100%', height: '200px', background: '#f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>No Image</div>
-                )}
-                <div style={{ padding: '15px' }}>
-                  <h4 style={{ margin: '0 0 10px 0' }}>{house.title}</h4>
-                  <p style={{ margin: '5px 0', color: '#2e6F40', fontWeight: 'bold', fontSize: '1.2rem' }}>₱{Number(house.price).toLocaleString()}</p>
-                  <p style={{ margin: '5px 0', color: '#666' }}>{house.location}</p>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-
-        {modalHouse && (
-          <div className="modal-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }} onClick={() => setModalHouse(null)}>
-            <div className="modal-content" style={{ background: 'white', borderRadius: '12px', padding: '30px', maxWidth: '600px', width: '90%', maxHeight: '90vh', overflow: 'auto' }} onClick={(e) => e.stopPropagation()}>
-              <button onClick={() => setModalHouse(null)} style={{ float: 'right', background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer' }}>×</button>
-              {editMode ? (
-                <div>
-                  <h3>Edit Property</h3>
-                  <div className="form-group" style={{ marginBottom: '15px' }}>
-                    <label>Title</label>
-                    <input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} style={{ width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '4px' }} />
-                  </div>
-                  <div className="form-group" style={{ marginBottom: '15px' }}>
-                    <label>Price (₱)</label>
-                    <input type="number" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} style={{ width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '4px' }} />
-                  </div>
-                  <div className="form-group" style={{ marginBottom: '15px' }}>
-                    <label>Location</label>
-                    <input value={editLocation} onChange={(e) => setEditLocation(e.target.value)} style={{ width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '4px' }} />
-                  </div>
-                  <div className="form-group" style={{ marginBottom: '15px' }}>
-                    <label>Description</label>
-                    <textarea value={editDescription} onChange={(e) => setEditDescription(e.target.value)} rows={4} style={{ width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '4px' }} />
-                  </div>
-                  <div className="form-group" style={{ marginBottom: '15px' }}>
-                    <label>Image</label>
-                    <input type="file" accept="image/*" onChange={(e) => { if (e.target.files?.[0]) { setEditImage(e.target.files[0]); setEditImagePreview(URL.createObjectURL(e.target.files[0])); } }} />
-                    {editImagePreview && <img src={editImagePreview} alt="Preview" style={{ width: '100%', maxHeight: '200px', objectFit: 'cover', marginTop: '10px', borderRadius: '4px' }} />}
-                  </div>
-                  <div style={{ display: 'flex', gap: '10px' }}>
-                    <button onClick={handleHouseSaveEdit} className="bulletin-btn-primary">Save</button>
-                    <button onClick={() => setEditMode(false)} className="bulletin-btn-secondary">Cancel</button>
-                  </div>
-                </div>
-              ) : (
-                <div>
-                  {modalHouse.image && <img src={modalHouse.image} alt={modalHouse.title} style={{ width: '100%', maxHeight: '300px', objectFit: 'cover', borderRadius: '8px', marginBottom: '20px' }} />}
-                  <h3>{modalHouse.title}</h3>
-                  <p style={{ color: '#2e6F40', fontWeight: 'bold', fontSize: '1.5rem' }}>₱{Number(modalHouse.price).toLocaleString()}</p>
-                  <p><strong>Location:</strong> {modalHouse.location}</p>
-                  <p><strong>Description:</strong> {modalHouse.description}</p>
-                  <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
-                    <button onClick={() => setEditMode(true)} className="bulletin-btn-primary">Edit</button>
-                    <button onClick={() => handleHouseDelete(modalHouse.id)} className="bulletin-action-btn delete">Delete</button>
-                    <button onClick={() => setModalHouse(null)} className="bulletin-btn-secondary">Close</button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const renderBookingsTab = () => {
-    return (
-      <div className="bulletin-container">
-        <div className="bulletin-controls">
-          <div className="bulletin-search">
-            <SearchIcon className="bulletin-search-icon" />
-            <input type="text" placeholder="Search bookings..." value={bookingSearchQuery} onChange={(e) => setBookingSearchQuery(e.target.value)} className="bulletin-search-input" />
-          </div>
-          <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} style={{ padding: '10px', border: '2px solid #e0e0e0', borderRadius: '8px' }} />
-          {selectedDate && <button onClick={() => setSelectedDate("")} className="bulletin-btn-secondary">Clear Date</button>}
-        </div>
-
-        <div style={{ marginTop: '20px', overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white', borderRadius: '12px', overflow: 'hidden' }}>
-            <thead>
-              <tr style={{ background: '#2e6F40', color: 'white' }}>
-                <th style={{ padding: '12px', textAlign: 'left' }}>Facility</th>
-                <th style={{ padding: '12px', textAlign: 'left' }}>User</th>
-                <th style={{ padding: '12px', textAlign: 'left' }}>Date</th>
-                <th style={{ padding: '12px', textAlign: 'left' }}>Time</th>
-                <th style={{ padding: '12px', textAlign: 'left' }}>Status</th>
-                <th style={{ padding: '12px', textAlign: 'left' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredBookings.length === 0 ? (
-                <tr>
-                  <td colSpan={6} style={{ padding: '40px', textAlign: 'center' }}>No bookings found.</td>
-                </tr>
-              ) : (
-                filteredBookings.map((b) => (
-                  <tr key={b.id} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                    <td style={{ padding: '12px' }}>{b.facility_name}</td>
-                    <td style={{ padding: '12px' }}>{b.user_name || 'N/A'}</td>
-                    <td style={{ padding: '12px' }}>{b.date}</td>
-                    <td style={{ padding: '12px' }}>{formatTimeTo12Hour(b.start_time)} - {formatTimeTo12Hour(b.end_time)}</td>
-                    <td style={{ padding: '12px' }}>
-                      <span style={{ padding: '4px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: '600', background: b.status === 'approved' ? '#d4edda' : b.status === 'rejected' ? '#f8d7da' : '#fff3cd', color: b.status === 'approved' ? '#155724' : b.status === 'rejected' ? '#721c24' : '#856404' }}>
-                        {b.status}
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px' }}>
-                      {b.status === "pending" ? (
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <button onClick={() => handleBookingAction(b.id, "approved")} style={{ padding: '6px 12px', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Approve</button>
-                          <button onClick={() => handleBookingAction(b.id, "rejected")} style={{ padding: '6px 12px', background: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Reject</button>
-                        </div>
-                      ) : (
-                        <button onClick={() => handleBookingDelete(b.id)} className="bulletin-action-btn delete">Delete</button>
-                      )}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    );
-  };
-
-  const renderPinsTab = () => {
-    return (
-      <div className="bulletin-container">
-        <div className="bulletin-controls">
-          <div className="bulletin-search">
-            <SearchIcon className="bulletin-search-icon" />
-            <input type="text" placeholder="Search pins..." value={pinSearch} onChange={(e) => setPinSearch(e.target.value)} className="bulletin-search-input" />
-          </div>
-          <Link to="/admin-dashboard/map" className="bulletin-add-btn" style={{ textDecoration: 'none', display: 'inline-flex' }}>
-            <AddIcon /> Manage on Map
-          </Link>
-        </div>
-
-        <div className="bulletin-list">
-          {filteredPins.length === 0 ? (
-            <div className="bulletin-empty">
-              <p className="bulletin-empty-text">No pins found.</p>
-            </div>
-          ) : (
-            filteredPins.map((pin) => (
-              <div key={pin.id} className="bulletin-card">
-                <div className="bulletin-card-header">
-                  <div className="bulletin-card-title-section">
-                    <h3 className="bulletin-card-title">{pin.name}</h3>
-                    <div className="bulletin-card-badges">
-                      {pin.status && <span className="bulletin-badge published-badge">{pin.status}</span>}
-                    </div>
-                  </div>
-                  <div className="bulletin-card-actions">
-                    <button onClick={() => handlePinDelete(pin.id)} className="bulletin-action-btn delete">
-                      <DeleteIcon />
-                    </button>
-                  </div>
-                </div>
-                <div className="bulletin-card-content">
-                  {pin.description && <p className="bulletin-card-text">{pin.description}</p>}
-                  <div style={{ display: 'flex', gap: '20px', marginTop: '10px', fontSize: '14px', color: '#666' }}>
-                    {pin.price && <span><strong>Price:</strong> {pin.price}</span>}
-                    {pin.occupant && <span><strong>Occupant:</strong> {pin.occupant}</span>}
-                    {pin.square_meter && <span><strong>Size:</strong> {pin.square_meter} m²</span>}
-                  </div>
-                  <div style={{ marginTop: '10px', fontSize: '14px', color: '#999' }}>
-                    <strong>Location:</strong> {pin.latitude.toFixed(6)}, {pin.longitude.toFixed(6)}
-                  </div>
                 </div>
               </div>
             ))
@@ -2182,6 +2037,215 @@ const AdminBulletin: React.FC = () => {
     );
   };
 
+  const renderEmergencyContactsTab = () => {
+    const filteredContacts = emergencyContacts.filter(contact => {
+      if (emergencyContactSearchTerm) {
+        const searchLower = emergencyContactSearchTerm.toLowerCase();
+        return (
+          contact.name.toLowerCase().includes(searchLower) ||
+          contact.phone.toLowerCase().includes(searchLower) ||
+          (contact.description && contact.description.toLowerCase().includes(searchLower)) ||
+          contact.category.toLowerCase().includes(searchLower)
+        );
+      }
+      return true;
+    });
+
+    const stats = {
+      total: emergencyContacts.length,
+      active: emergencyContacts.filter(c => c.is_active).length,
+      inactive: emergencyContacts.filter(c => !c.is_active).length
+    };
+
+    return (
+      <div className="bulletin-container">
+        <div className="bulletin-stats-grid">
+          <div className="bulletin-stat-card">
+            <div className="bulletin-stat-value">{stats.total}</div>
+            <div className="bulletin-stat-label">Total Contacts</div>
+          </div>
+          <div className="bulletin-stat-card published">
+            <div className="bulletin-stat-value">{stats.active}</div>
+            <div className="bulletin-stat-label">Active</div>
+          </div>
+          <div className="bulletin-stat-card draft">
+            <div className="bulletin-stat-value">{stats.inactive}</div>
+            <div className="bulletin-stat-label">Inactive</div>
+          </div>
+        </div>
+
+        <div className="bulletin-controls">
+          <div className="bulletin-search">
+            <SearchIcon className="bulletin-search-icon" />
+            <input
+              type="text"
+              placeholder="Search emergency contacts..."
+              value={emergencyContactSearchTerm}
+              onChange={(e) => setEmergencyContactSearchTerm(e.target.value)}
+              className="bulletin-search-input"
+            />
+          </div>
+          <button 
+            onClick={() => { 
+              setShowEmergencyContactForm(true); 
+              setEmergencyContactEditingId(null); 
+              setEmergencyContactFormData({
+                name: '',
+                phone: '',
+                description: '',
+                category: 'general',
+                is_active: true,
+                order: 0
+              });
+            }} 
+            className="bulletin-add-btn"
+          >
+            <AddIcon /> Add Emergency Contact
+          </button>
+        </div>
+
+        {showEmergencyContactForm && (
+          <div className="bulletin-form-card">
+            <h2 className="bulletin-form-title">
+              {emergencyContactEditingId ? 'Edit Emergency Contact' : 'Add New Emergency Contact'}
+            </h2>
+            <form onSubmit={handleEmergencyContactSubmit} className="bulletin-form-content">
+              <div className="bulletin-form-group">
+                <label className="bulletin-form-label">Name <span className="required">*</span></label>
+                <input
+                  type="text"
+                  name="name"
+                  value={emergencyContactFormData.name}
+                  onChange={handleEmergencyContactInputChange}
+                  className="bulletin-form-input"
+                  required
+                  maxLength={255}
+                />
+              </div>
+              <div className="bulletin-form-group">
+                <label className="bulletin-form-label">Phone Number <span className="required">*</span></label>
+                <input
+                  type="tel"
+                  name="phone"
+                  value={emergencyContactFormData.phone}
+                  onChange={handleEmergencyContactInputChange}
+                  className="bulletin-form-input"
+                  required
+                  maxLength={20}
+                  placeholder="e.g., 09123456789"
+                />
+              </div>
+              <div className="bulletin-form-group">
+                <label className="bulletin-form-label">Category</label>
+                <select
+                  name="category"
+                  value={emergencyContactFormData.category}
+                  onChange={handleEmergencyContactInputChange}
+                  className="bulletin-form-input"
+                >
+                  <option value="general">General</option>
+                  <option value="police">Police</option>
+                  <option value="fire">Fire Department</option>
+                  <option value="medical">Medical/Hospital</option>
+                  <option value="security">Security</option>
+                  <option value="emergency">Emergency Services</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div className="bulletin-form-group">
+                <label className="bulletin-form-label">Description</label>
+                <textarea
+                  name="description"
+                  value={emergencyContactFormData.description || ''}
+                  onChange={handleEmergencyContactInputChange}
+                  rows={4}
+                  className="bulletin-form-textarea"
+                  placeholder="Additional information about this contact..."
+                />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                <div className="bulletin-form-group">
+                  <label className="bulletin-form-label">Display Order</label>
+                  <input
+                    type="number"
+                    name="order"
+                    value={emergencyContactFormData.order}
+                    onChange={handleEmergencyContactInputChange}
+                    className="bulletin-form-input"
+                    min="0"
+                  />
+                </div>
+                <div className="bulletin-form-group" style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '25px' }}>
+                  <input
+                    type="checkbox"
+                    name="is_active"
+                    checked={emergencyContactFormData.is_active}
+                    onChange={handleEmergencyContactInputChange}
+                    style={{ width: '20px', height: '20px' }}
+                  />
+                  <label className="bulletin-form-label" style={{ margin: 0 }}>Active</label>
+                </div>
+              </div>
+              <div className="bulletin-form-actions">
+                <button type="submit" className="bulletin-save-btn">
+                  <SaveIcon /> {emergencyContactEditingId ? 'Update' : 'Create'} Contact
+                </button>
+                <button type="button" onClick={handleEmergencyContactCancel} className="bulletin-cancel-btn">
+                  <CancelIcon /> Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        <div className="bulletin-list">
+          {filteredContacts.length === 0 ? (
+            <div className="bulletin-empty">
+              <p className="bulletin-empty-text">No emergency contacts found.</p>
+            </div>
+          ) : (
+            filteredContacts.map((contact) => (
+              <div key={contact.id} className="bulletin-card">
+                <div className="bulletin-card-header">
+                  <div className="bulletin-card-title-section">
+                    <h3 className="bulletin-card-title">{contact.name}</h3>
+                    <div className="bulletin-card-badges">
+                      <span className={`bulletin-badge ${contact.is_active ? 'published-badge' : 'draft-badge'}`}>
+                        {contact.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                      <span className="bulletin-badge" style={{ background: '#2196F3', color: 'white' }}>
+                        {contact.category}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="bulletin-card-actions">
+                    <button onClick={() => handleEmergencyContactEdit(contact)} className="bulletin-action-btn edit">
+                      <EditIcon />
+                    </button>
+                    <button onClick={() => contact.id && handleEmergencyContactDelete(contact.id)} className="bulletin-action-btn delete">
+                      <DeleteIcon />
+                    </button>
+                  </div>
+                </div>
+                <div className="bulletin-card-content">
+                  <div style={{ display: 'flex', gap: '20px', marginBottom: '10px', fontSize: '16px' }}>
+                    <span><strong>Phone:</strong> <a href={`tel:${contact.phone}`} style={{ color: '#2e6F40', textDecoration: 'none' }}>{contact.phone}</a></span>
+                  </div>
+                  {contact.description && (
+                    <p className="bulletin-card-text">{contact.description}</p>
+                  )}
+                  <div style={{ marginTop: '10px', fontSize: '14px', color: '#999' }}>
+                    Order: {contact.order} | Created: {contact.created_at ? new Date(contact.created_at).toLocaleDateString() : 'N/A'}
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    );
+  };
+
   const renderVisitorRequestsTab = () => {
     const filteredRequests = visitorRequests.filter(req => {
       if (visitorRequestFilter !== 'all' && req.status !== visitorRequestFilter) {
@@ -2372,27 +2436,6 @@ const AdminBulletin: React.FC = () => {
                   </div>
                 )}
 
-                {req.pdf_url && (
-                  <div style={{ marginTop: '10px' }}>
-                    <a
-                      href={req.pdf_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        padding: '8px 16px',
-                        backgroundColor: '#2196F3',
-                        color: 'white',
-                        textDecoration: 'none',
-                        borderRadius: '6px',
-                        fontSize: '14px',
-                        display: 'inline-block'
-                      }}
-                    >
-                      📄 Download PDF
-                    </a>
-                  </div>
-                )}
-
                 <div style={{ fontSize: '12px', color: '#999', marginTop: '10px' }}>
                   Created: {new Date(req.created_at).toLocaleString()}
                 </div>
@@ -2422,7 +2465,7 @@ const AdminBulletin: React.FC = () => {
           {/* Tab Navigation */}
           <div style={{ background: 'white', borderBottom: '2px solid #e0e0e0', margin: '0 -20px 30px -20px', padding: '0 20px' }}>
             <div style={{ display: 'flex', gap: '10px', overflowX: 'auto' }}>
-              {(['announcements', 'news-alerts', 'blog-stories', 'houses', 'bookings', 'pins', 'media-gallery'] as TabType[]).map((tab) => (
+              {(['announcements', 'blog-stories', 'media-gallery', 'emergency-contacts'] as TabType[]).map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
@@ -2439,7 +2482,9 @@ const AdminBulletin: React.FC = () => {
                     whiteSpace: 'nowrap'
                   }}
                 >
-                  {tab === 'media-gallery' ? 'Community Gallery' : tab.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                  {tab === 'media-gallery' ? 'Community Gallery' : 
+                   tab === 'emergency-contacts' ? 'Emergency Contacts' :
+                   tab.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
                 </button>
               ))}
             </div>

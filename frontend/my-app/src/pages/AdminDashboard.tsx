@@ -4,7 +4,7 @@ import { useNotifications } from './NotificationContext';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import './AdminDashboard.css';
-import { getToken } from '../utils/auth';
+import { getToken, logout } from '../utils/auth';
 import API_URL from '../utils/config';
 import Sidebar from './Sidebar';
 
@@ -30,9 +30,13 @@ import {
   CartesianGrid,
   Legend,
   ResponsiveContainer,
+  LineChart,
+  Line,
+  AreaChart,
+  Area,
 } from 'recharts';
 
-const COLORS = ['#4caf50', '#2c7c4bff', '#262927ff'];
+const COLORS = ['#4caf50', '#2c7c4bff', '#262927ff', '#FFC107', '#DC3545', '#17A2B8', '#6F42C1', '#E83E8C', '#20C997', '#FD7E14'];
 
 const AdminDashboard: React.FC = () => {
   const { addNotification } = useNotifications();
@@ -43,10 +47,12 @@ const AdminDashboard: React.FC = () => {
     saleRentCount: 0,
     pendingVerificationsCount: 0,
     serviceFeeCount: 0,
+    maintenanceRequestsCount: 0,
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const token = getToken();
+  const navigate = useNavigate();
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -60,6 +66,13 @@ const AdminDashboard: React.FC = () => {
           fetch(`${API_URL}/admin/dashboard-stats/`, { headers: authHeaders }),
           fetch(`${API_URL}/admin/pin-stats/`, { headers: authHeaders }),
         ]);
+        // Handle 401 errors - redirect to login
+        if (dashboardRes.status === 401 || pinRes.status === 401) {
+          logout();
+          navigate('/login');
+          return;
+        }
+        
         if (!dashboardRes.ok) throw new Error('Failed to fetch dashboard stats');
         if (!pinRes.ok) throw new Error('Failed to fetch pin stats');
         const dashboardData = await dashboardRes.json();
@@ -73,11 +86,13 @@ const AdminDashboard: React.FC = () => {
           housesRes,
           pendingVerificationsRes,
           serviceFeeRes,
+          maintenanceRequestsRes,
         ] = await Promise.all([
           fetch(`${API_URL}/admin/visitors/`, { headers: authHeaders }).catch(() => null),
           fetch(`${API_URL}/houses/`, { headers: authHeaders }).catch(() => null),
           fetch(`${API_URL}/admin/pending-verifications/`, { headers: authHeaders }).catch(() => null),
           fetch(`${API_URL}/service-fees/`, { headers: authHeaders }).catch(() => null),
+          fetch(`${API_URL}/maintenance-requests/`, { headers: authHeaders }).catch(() => null),
         ]);
 
         // Extract counts from responses - helper function to safely get JSON
@@ -94,6 +109,7 @@ const AdminDashboard: React.FC = () => {
         const housesData = await getJsonData(housesRes);
         const pendingVerificationsData = await getJsonData(pendingVerificationsRes);
         const serviceFeeData = await getJsonData(serviceFeeRes);
+        const maintenanceRequestsData = await getJsonData(maintenanceRequestsRes);
 
         // Handle paginated responses or arrays
         const getCount = (data: any) => {
@@ -108,6 +124,7 @@ const AdminDashboard: React.FC = () => {
           saleRentCount: getCount(housesData),
           pendingVerificationsCount: getCount(pendingVerificationsData),
           serviceFeeCount: getCount(serviceFeeData),
+          maintenanceRequestsCount: getCount(maintenanceRequestsData),
         });
       } catch (err: any) {
         setError(err.message || 'Unknown error');
@@ -116,9 +133,7 @@ const AdminDashboard: React.FC = () => {
       }
     };
     if (token) fetchStats();
-  }, [token]);
-
-
+  }, [token, navigate]);
 
   const pinChartData = [
     { name: 'Occupied', value: pinStats.occupied },
@@ -131,7 +146,33 @@ const AdminDashboard: React.FC = () => {
     { name: 'Pending Approvals', value: stats.pending_approvals },
   ];
 
-  const navigate = useNavigate();
+  // Combined chart data for Visitors, Service Fee, and Maintenance
+  const servicesOverviewData = [
+    { name: 'Visitors', value: additionalStats.visitorsCount },
+    { name: 'Service Fees', value: additionalStats.serviceFeeCount },
+    { name: 'Maintenance', value: additionalStats.maintenanceRequestsCount },
+  ];
+
+  const overallStatsData = [
+    { name: 'Users', value: stats.total_users },
+    { name: 'Bookings', value: stats.active_bookings },
+    { name: 'Visitors', value: additionalStats.visitorsCount },
+    { name: 'Service Fees', value: additionalStats.serviceFeeCount },
+    { name: 'Maintenance', value: additionalStats.maintenanceRequestsCount },
+  ];
+
+  const statusComparisonData = [
+    { name: 'Active', value: stats.active_bookings },
+    { name: 'Pending', value: stats.pending_approvals },
+    { name: 'Occupied', value: pinStats.occupied },
+    { name: 'Available', value: pinStats.available },
+  ];
+
+  const resourceDistributionData = [
+    { name: 'Users', value: stats.total_users },
+    { name: 'Houses', value: additionalStats.saleRentCount },
+    { name: 'Pins', value: pinStats.total_pins },
+  ];
 
   return (
     <>
@@ -230,6 +271,16 @@ const AdminDashboard: React.FC = () => {
       </div>
     </div>
   </Link>
+
+  <Link to="/admin-maintenance-requests" className="card" style={{ textDecoration: 'none', color: 'inherit' }}>
+    <div className="card-content">
+      <img src={pendingIcon} alt="Maintenance Requests" />
+      <div className="card-text">
+        <h3>Maintenance Requests</h3>
+        <p>{additionalStats.maintenanceRequestsCount}</p>
+      </div>
+    </div>
+  </Link>
 </div>
 
 
@@ -242,7 +293,7 @@ const AdminDashboard: React.FC = () => {
     </div>
     <ResponsiveContainer width="100%" height={300}>
       <PieChart>
-        <Pie data={pinChartData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} label>
+        <Pie data={pinChartData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} label isAnimationActive={false}>
           {pinChartData.map((entry, index) => (
             <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
           ))}
@@ -264,8 +315,99 @@ const AdminDashboard: React.FC = () => {
         <YAxis />
         <Tooltip />
         <Legend />
-        <Bar dataKey="value" fill="#2c7c4bff" />
+        <Bar dataKey="value" fill="#2c7c4bff" isAnimationActive={false} />
       </BarChart>
+    </ResponsiveContainer>
+  </div>
+
+  <div className="graph-card">
+    <div className="graph-header">
+      <img src={visitorIcon} alt="Services Icon" className="graph-icon" />
+      <h3>Services Overview</h3>
+    </div>
+    <ResponsiveContainer width="100%" height={300}>
+      <BarChart data={servicesOverviewData}>
+        <CartesianGrid strokeDasharray="3 3" />
+        <XAxis dataKey="name" />
+        <YAxis />
+        <Tooltip />
+        <Legend />
+        <Bar dataKey="value" isAnimationActive={false}>
+          {servicesOverviewData.map((entry, index) => {
+            const colors = ['#17A2B8', '#FFC107', '#DC3545'];
+            return <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />;
+          })}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  </div>
+
+  <div className="graph-card">
+    <div className="graph-header">
+      <img src={mapIcon} alt="Resource Icon" className="graph-icon" />
+      <h3>Resource Distribution</h3>
+    </div>
+    <ResponsiveContainer width="100%" height={300}>
+      <PieChart>
+        <Pie 
+          data={resourceDistributionData} 
+          dataKey="value" 
+          nameKey="name" 
+          cx="50%" 
+          cy="50%" 
+          outerRadius={100} 
+          label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+          isAnimationActive={false}
+        >
+          {resourceDistributionData.map((entry, index) => (
+            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+          ))}
+        </Pie>
+        <Tooltip />
+        <Legend />
+      </PieChart>
+    </ResponsiveContainer>
+  </div>
+
+  <div className="graph-card">
+    <div className="graph-header">
+      <img src={userIcon} alt="Overall Stats Icon" className="graph-icon" />
+      <h3>Overall Statistics</h3>
+    </div>
+    <ResponsiveContainer width="100%" height={300}>
+      <BarChart data={overallStatsData} layout="vertical">
+        <CartesianGrid strokeDasharray="3 3" />
+        <XAxis type="number" />
+        <YAxis dataKey="name" type="category" width={100} />
+        <Tooltip />
+        <Legend />
+        <Bar dataKey="value" fill="#2e6F40" isAnimationActive={false} />
+      </BarChart>
+    </ResponsiveContainer>
+  </div>
+
+  <div className="graph-card">
+    <div className="graph-header">
+      <img src={bookingIcon} alt="Status Icon" className="graph-icon" />
+      <h3>Status Comparison</h3>
+    </div>
+    <ResponsiveContainer width="100%" height={300}>
+      <AreaChart data={statusComparisonData}>
+        <CartesianGrid strokeDasharray="3 3" />
+        <XAxis dataKey="name" />
+        <YAxis />
+        <Tooltip />
+        <Legend />
+        <Area 
+          type="monotone" 
+          dataKey="value" 
+          stroke="#2c7c4bff" 
+          fill="#2c7c4bff" 
+          fillOpacity={0.6}
+          name="Count"
+          isAnimationActive={false}
+        />
+      </AreaChart>
     </ResponsiveContainer>
   </div>
 </div>

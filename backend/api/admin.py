@@ -1,8 +1,8 @@
 # admin.py
 from django.contrib import admin
 from django.utils import timezone
-from .models import Post, Message, Subdivision, Pin, Facility, Booking, News, Alert, ContactInfo, ContactMessage, ResidentPin, Visitor, House, BlogComment
-from .models import UserProfile, ServiceFee, Bulletin, Maintenance, CommunityMedia, VisitorRequest
+from .models import Post, Message, Subdivision, Pin, Facility, Booking, News, Alert, ContactInfo, ContactMessage, EmergencyContact, ResidentPin, Visitor, House, BlogComment
+from .models import UserProfile, ServiceFee, Bulletin, Maintenance, MaintenanceRequest, CommunityMedia, VisitorRequest
 from django.utils.html import format_html
 
 
@@ -30,7 +30,26 @@ class FacilityAdmin(admin.ModelAdmin):
 
 @admin.register(Booking)
 class BookingAdmin(admin.ModelAdmin):
-    list_display = ('user', 'facility', 'date', 'start_time', 'end_time', 'created_at') 
+    list_display = ('id', 'user', 'facility_display', 'date', 'start_time', 'end_time', 'status', 'created_at')
+    list_filter = ('status', 'date', 'created_at', 'facility')
+    search_fields = ('user__username', 'user__email', 'facility__name', 'date')
+    list_select_related = ('user', 'facility')
+    # Removed date_hierarchy to avoid Python 3.14 compatibility issue
+    readonly_fields = ('created_at',)
+    ordering = ('-date', '-start_time')
+    
+    def get_queryset(self, request):
+        """Optimize queryset with select_related to prevent N+1 queries"""
+        qs = super().get_queryset(request)
+        return qs.select_related('user', 'facility')
+    
+    def facility_display(self, obj):
+        """Safely display facility name"""
+        if obj.facility:
+            return obj.facility.get_name_display()
+        return "-"
+    facility_display.short_description = 'Facility'
+    facility_display.admin_order_field = 'facility__name' 
 
 @admin.register(News)
 class NewsAdmin(admin.ModelAdmin):
@@ -49,6 +68,13 @@ class AlertAdmin(admin.ModelAdmin):
 @admin.register(ContactInfo)
 class ContactInfoAdmin(admin.ModelAdmin):
     list_display = ('address', 'phone', 'email')
+
+@admin.register(EmergencyContact)
+class EmergencyContactAdmin(admin.ModelAdmin):
+    list_display = ('name', 'phone', 'category', 'is_active', 'order', 'created_at')
+    list_filter = ('category', 'is_active', 'created_at')
+    search_fields = ('name', 'phone', 'description')
+    ordering = ('order', 'name')
 
 
 @admin.register(ContactMessage)
@@ -272,6 +298,28 @@ class MaintenanceAdmin(admin.ModelAdmin):
     search_fields = ('facility__name', 'reason', 'created_at', 'updated_at')
     readonly_fields = ('created_at', 'updated_at')
     fields = ('facility', 'start_date', 'end_date', 'start_time', 'end_time', 'reason', 'created_at', 'updated_at')
+
+@admin.register(MaintenanceRequest)
+class MaintenanceRequestAdmin(admin.ModelAdmin):
+    list_display = ('id', 'homeowner', 'maintenance_type', 'preferred_date', 'preferred_time', 'is_urgent', 'status', 'approved_by', 'created_at')
+    list_filter = ('status', 'maintenance_type', 'is_urgent', 'use_external_contractor', 'created_at', 'approved_by')
+    search_fields = ('homeowner__username', 'homeowner__email', 'maintenance_type', 'description', 'external_contractor_name')
+    readonly_fields = ('created_at', 'updated_at', 'approved_at')
+    fieldsets = (
+        ('Request Information', {
+            'fields': ('homeowner', 'maintenance_type', 'description', 'preferred_date', 'preferred_time', 'is_urgent')
+        }),
+        ('External Contractor', {
+            'fields': ('use_external_contractor', 'external_contractor_name', 'external_contractor_contact', 'external_contractor_company'),
+            'classes': ('collapse',)
+        }),
+        ('Status & Approval', {
+            'fields': ('status', 'approved_by', 'approved_at', 'declined_reason')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at')
+        }),
+    )
 
 @admin.register(CommunityMedia)
 class CommunityMediaAdmin(admin.ModelAdmin):

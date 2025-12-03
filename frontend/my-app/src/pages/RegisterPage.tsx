@@ -5,7 +5,8 @@ import NavBar from './NavBar';
 import Footer from './Footer';
 import './RegisterPage.css';
 import phFlag from '../images/philippines.png';
-import registerImage from '../images/register.png';
+import logoImage from '../images/logo.png';
+import loginbgImage from '../images/loginbg.png';
 
 const RegisterPage: React.FC = () => {
   const [username, setUsername] = useState('');
@@ -150,87 +151,137 @@ const RegisterPage: React.FC = () => {
   };
 
   return (
-    <div>
+    <>
       <NavBar />
-      <div className="register-container">
-        <div className="register-box">
-          <img src={registerImage} alt="Register" className="login-profile-img" />
-          <h2 style={{ color: '#2e7d32' }}>Register</h2>
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: '20px',
+          paddingTop: '100px',
+          position: 'relative',
+          overflow: 'hidden',
+        }}
+      >
+        {/* Background layer */}
+        <div
+          style={{
+            position: 'absolute',
+            top: '-20px',
+            left: '-20px',
+            right: '-20px',
+            bottom: '-20px',
+            backgroundImage: `url(${loginbgImage})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            backgroundRepeat: 'no-repeat',
+            zIndex: 0,
+            backgroundColor: 'transparent',
+            opacity: 1,
+            overflow: 'hidden',
+          }}
+        />
+        {/* Dark overlay for better text contrast */}
+        <div
+          style={{
+            position: 'absolute',
+            top: '-20px',
+            left: '-20px',
+            right: '-20px',
+            bottom: '-20px',
+            backgroundColor: 'rgba(0, 0, 0, 0.4)',
+            zIndex: 0,
+            overflow: 'hidden',
+          }}
+        />
+        {/* Content layer */}
+        <div className="register-page" style={{ position: 'relative', zIndex: 1 }}>
+          <div className="register-container">
+            {/* Left side - Logo/Branding */}
+            <div className="register-image">
+              <img src={logoImage} alt="Happy Homes Logo" className="register-logo" />
+              <div className="register-branding">
+                <h1 className="register-brand-title">Join Happy Homes</h1>
+                <p className="register-brand-subtitle">Create your account and become part of our community</p>
+              </div>
+            </div>
+            
+            {/* Right side - Form */}
+            <div className="register-box">
+              <h2 className="register-title">Register</h2>
 
-          <input className="register-input" value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="First Name" />
-          <input className="register-input" value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Last Name" />
+              <input className="register-input" value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="First Name" />
+              <input className="register-input" value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Last Name" />
 
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <input
-              className="register-input"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Email"
-              disabled={isEmailVerified}
-            />
-            {!isEmailVerified && (
-              <button onClick={sendVerificationCode} className="verify-button">
-                {isCodeSent ? 'Resend' : 'Send Code'}
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <input
+                  className="register-input"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Email"
+                  disabled={isEmailVerified}
+                />
+                {!isEmailVerified && (
+                  <button onClick={sendVerificationCode} className="verify-button">
+                    {isCodeSent ? 'Resend' : 'Send Code'}
+                  </button>
+                )}
+              </div>
+
+              {isCodeSent && !isEmailVerified && (
+                <div style={{ marginTop: '8px' }}>
+                  <input
+                    className="register-input"
+                    placeholder="Enter verification code"
+                    value={verificationCode}
+                    onChange={(e) => setVerificationCode(e.target.value)}
+                  />
+                  <button onClick={verifyCode} className="verify-button">Verify</button>
+                </div>
+              )}
+
+              {isEmailVerified && <p style={{ color: 'green' }}>Email verified</p>}
+
+              <input className="register-input" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Username" />
+              <input className="register-input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" />
+              {passwordError && <p className="error-text">{passwordError}</p>}
+
+              <div className="contact-number-container">
+                <img src={phFlag} alt="PH Flag" className="flag-icon" />
+                <span className="prefix">+63</span>
+                <div className="contact-input-wrapper">
+                  <input
+                    type="text"
+                    className="contact-input"
+                    value={contactNumber.replace(/^\+63/, '')}
+                    onChange={(e) => {
+                      let val = e.target.value.replace(/\D/g, '');
+                      if (val.length > 10) val = val.slice(0, 10);
+                      setContactNumber(val ? '+63' + val : '+63');
+                    }}
+                    placeholder="xxxxxxxxx"
+                  />
+                </div>
+              </div>
+
+              <button className="register-button" onClick={handleRegister}>
+                Register
               </button>
-            )}
-          </div>
-
-          {isCodeSent && !isEmailVerified && (
-            <div style={{ marginTop: '8px' }}>
-              <input
-                className="register-input"
-                placeholder="Enter verification code"
-                value={verificationCode}
-                onChange={(e) => setVerificationCode(e.target.value)}
-              />
-              <button onClick={verifyCode} className="verify-button">Verify</button>
-            </div>
-          )}
-
-          {isEmailVerified && <p style={{ color: 'green' }}>Email verified</p>}
-
-          <input className="register-input" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Username" />
-          <input className="register-input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" />
-          {passwordError && <p className="error-text">{passwordError}</p>}
-
-          <div className="contact-number-container">
-            <img src={phFlag} alt="PH Flag" className="flag-icon" />
-            <span className="prefix">+63</span>
-            <div className="contact-input-wrapper">
-              <input
-                type="text"
-                className="contact-input"
-                value={contactNumber.replace(/^\+63/, '')}
-                onChange={(e) => {
-                  let val = e.target.value.replace(/\D/g, '');
-                  if (val.length > 10) val = val.slice(0, 10);
-                  setContactNumber(val ? '+63' + val : '+63');
-                }}
-                placeholder="xxxxxxxxx"
-              />
+              <button className="login-button" onClick={() => navigate('/login?form=true')}>
+                Login Instead
+              </button>
             </div>
           </div>
-
-          <button className="register-button" onClick={handleRegister}>
-            Register
-          </button>
-          <button className="login-button" onClick={() => navigate('/login')}>
-            Login Instead
-          </button>
         </div>
       </div>
       <Footer />
-    </div>
+    </>
   );
 };
 
 export default RegisterPage;
-
-
-
-
-// import React, { useState } from 'react';
-// import { setToken } from '../utils/auth';
 // import { useNavigate } from 'react-router-dom';
 // import NavBar from './NavBar';
 // import Footer from './Footer';

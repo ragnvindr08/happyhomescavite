@@ -13,7 +13,7 @@ from .views import (
 from django.conf import settings
 from django.conf.urls.static import static
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
-from .views import UserHistoryListView, my_resident_pin, visitor_checkin, visitor_checkout, ResidentPinViewSet, ResidentApprovalViewSet, visitor_timeout, VisitorTrackingViewSet, HouseListCreateView, HouseViewSet, GuestHouseListView, GuestHouseDetailView, ReviewViewSet, FAQViewSet, ServiceFeeViewSet, BlogCommentViewSet, BulletinCommentViewSet, CommunityMediaViewSet, VisitorRequestViewSet
+from .views import UserHistoryListView, my_resident_pin, visitor_checkin, visitor_checkout, ResidentPinViewSet, ResidentApprovalViewSet, visitor_timeout, VisitorTrackingViewSet, HouseListCreateView, HouseViewSet, GuestHouseListView, GuestHouseDetailView, ReviewViewSet, FAQViewSet, ServiceFeeViewSet, BlogCommentViewSet, BulletinCommentViewSet, CommunityMediaViewSet, VisitorRequestViewSet, MaintenanceRequestViewSet, MaintenanceProviderViewSet, EmergencyContactViewSet, verify_pin_view
 
 
 router = DefaultRouter()
@@ -29,6 +29,7 @@ router.register(r'news', NewsViewSet, basename='news')
 router.register(r'alerts', AlertViewSet, basename='alert')
 router.register(r'contact-info', ContactInfoViewSet, basename='contact-info')
 router.register(r'contact-messages', ContactMessageViewSet, basename='contact-message')
+router.register(r'emergency-contacts', EmergencyContactViewSet, basename='emergency-contact')
 router.register(r'visitor', VisitorViewSet, basename='visitor')
 router.register(r'resident-pin', ResidentPinViewSet, basename='resident-pin')
 router.register(r'residents', ResidentApprovalViewSet, basename='residents')
@@ -41,11 +42,14 @@ router.register(r'bulletin-comments', BulletinCommentViewSet, basename='bulletin
 router.register(r'bulletins', BulletinViewSet, basename='bulletin')
 router.register(r'community-media', CommunityMediaViewSet, basename='community-media')
 router.register(r'visitor-requests', VisitorRequestViewSet, basename='visitor-request')
+router.register(r'maintenance-requests', MaintenanceRequestViewSet, basename='maintenance-request')
+router.register(r'maintenance-providers', MaintenanceProviderViewSet, basename='maintenance-provider')
 
 urlpatterns = [
     path('register/', register),
     path('token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('visitor-requests/verify_pin/', views.verify_pin_view, name='verify-pin'),
     path('posts/', get_posts),
     path('posts/<int:pk>/', views.post_detail, name='post-detail'),
     path('myposts/', get_user_posts),

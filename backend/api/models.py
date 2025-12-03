@@ -41,6 +41,7 @@ def save_user_profile(sender, instance, **kwargs):
 class Post(models.Model):
     title = models.CharField(max_length=100)
     body = models.TextField()
+    image = models.ImageField(upload_to='blog_images/', blank=True, null=True)
     lat = models.FloatField(null=True, blank=True)
     lng = models.FloatField(null=True, blank=True)
     history = HistoricalRecords()
@@ -293,6 +294,134 @@ class Maintenance(models.Model):
     def __str__(self):
         time_str = f" {self.start_time} - {self.end_time}" if self.start_time and self.end_time else ""
         return f"{self.facility.get_name_display()} - {self.start_date} to {self.end_date}{time_str}"
+
+
+class MaintenanceRequest(models.Model):
+    """
+    Homeowner maintenance request system
+    Homeowner creates request -> Admin approves/declines -> Email notifications sent
+    """
+    MAINTENANCE_TYPE_CHOICES = [
+        ('carpenter', 'Carpenter'),
+        ('aircon', 'Air Conditioning Repair'),
+        ('plumbing', 'Plumbing'),
+        ('electrical', 'Electrical'),
+        ('roofing', 'Roofing'),
+        ('renovation', 'House Renovation'),
+        ('painting', 'Painting'),
+        ('flooring', 'Flooring'),
+        ('appliance', 'Appliance Repair'),
+        ('structural_repairs', 'Structural Repairs'),
+        ('other', 'Other'),
+    ]
+    
+    STATUS_CHOICES = [
+        ('pending', 'Pending Approval'),
+        ('approved', 'Approved'),
+        ('declined', 'Declined'),
+        ('in_progress', 'In Progress'),
+        ('completed', 'Completed'),
+    ]
+    
+    # Homeowner who created the request
+    homeowner = models.ForeignKey(
+        User, 
+        on_delete=models.CASCADE, 
+        related_name='maintenance_requests'
+    )
+    
+    # Maintenance details
+    maintenance_type = models.CharField(max_length=50, choices=MAINTENANCE_TYPE_CHOICES)
+    description = models.TextField(help_text="Detailed description of the maintenance needed")
+    
+    # Preferred schedule
+    preferred_date = models.DateField()
+    preferred_time = models.TimeField()
+    
+    # Urgency
+    is_urgent = models.BooleanField(default=False)
+    
+    # External contractor option
+    use_external_contractor = models.BooleanField(
+        default=False,
+        help_text="If homeowner wants to call someone outside the subdivision"
+    )
+    external_contractor_name = models.CharField(max_length=255, blank=True, null=True)
+    external_contractor_contact = models.CharField(max_length=50, blank=True, null=True)
+    external_contractor_company = models.CharField(max_length=255, blank=True, null=True)
+    
+    # Status and approval
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    approved_by = models.ForeignKey(
+        User, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='approved_maintenance_requests'
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
+    declined_reason = models.TextField(blank=True, null=True)
+    admin_feedback = models.TextField(blank=True, null=True, help_text="Admin notes or feedback on the maintenance request")
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    history = HistoricalRecords()
+    
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name_plural = "Maintenance Requests"
+    
+    def __str__(self):
+        return f"{self.get_maintenance_type_display()} - {self.homeowner.username} ({self.status})"
+
+
+class MaintenanceProvider(models.Model):
+    """
+    Approved maintenance providers that admin can list for homeowners
+    """
+    name = models.CharField(max_length=255, help_text="Provider/Company name")
+    contact_person = models.CharField(max_length=255, blank=True, null=True, help_text="Contact person name")
+    phone = models.CharField(max_length=50, help_text="Contact phone number")
+    email = models.EmailField(blank=True, null=True, help_text="Contact email")
+    address = models.TextField(blank=True, null=True, help_text="Provider address")
+    
+    # Services offered
+    services = models.TextField(help_text="Comma-separated list of services offered (e.g., plumbing, electrical, roofing)")
+    
+    # Location info
+    is_nearby = models.BooleanField(default=True, help_text="Is this provider nearby the subdivision?")
+    distance = models.CharField(max_length=50, blank=True, null=True, help_text="Distance from subdivision (e.g., '2 km', '5 minutes')")
+    
+    # Status
+    is_approved = models.BooleanField(default=True, help_text="Is this provider approved by admin?")
+    is_active = models.BooleanField(default=True, help_text="Is this provider currently active?")
+    
+    # Additional info
+    rating = models.DecimalField(max_digits=3, decimal_places=2, blank=True, null=True, help_text="Provider rating (0-5)")
+    notes = models.TextField(blank=True, null=True, help_text="Admin notes about this provider")
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_providers')
+    
+    history = HistoricalRecords()
+    
+    class Meta:
+        ordering = ['-is_approved', '-is_active', 'name']
+        verbose_name = "Maintenance Provider"
+        verbose_name_plural = "Maintenance Providers"
+    
+    def __str__(self):
+        return f"{self.name} ({'Approved' if self.is_approved else 'Pending'})"
+    
+    def get_services_list(self):
+        """Return services as a list"""
+        if self.services:
+            return [s.strip() for s in self.services.split(',')]
+        return []
     
     
 class News(models.Model):
@@ -344,6 +473,31 @@ class ContactMessage(models.Model):
 
     def __str__(self):
         return f"{self.subject} from {self.name}"
+
+
+class EmergencyContact(models.Model):
+    """Emergency contact information for residents"""
+    name = models.CharField(max_length=255, help_text="Name of the emergency contact (e.g., Police, Fire Department, Hospital)")
+    phone = models.CharField(max_length=20, help_text="Contact phone number")
+    description = models.TextField(blank=True, null=True, help_text="Description or additional information")
+    category = models.CharField(
+        max_length=50,
+        default='general',
+        help_text="Category of emergency contact (police, fire, medical, security, etc.)"
+    )
+    is_active = models.BooleanField(default=True, help_text="Whether this contact is currently active")
+    order = models.IntegerField(default=0, help_text="Display order (lower numbers appear first)")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    history = HistoricalRecords()
+
+    class Meta:
+        ordering = ['order', 'name']
+        verbose_name = "Emergency Contact"
+        verbose_name_plural = "Emergency Contacts"
+
+    def __str__(self):
+        return f"{self.name} - {self.phone}"
  
 class ResidentPin(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="resident_pin")
@@ -411,6 +565,7 @@ class VisitorRequest(models.Model):
     visitor_name = models.CharField(max_length=255)
     visitor_email = models.EmailField()
     visitor_contact_number = models.CharField(max_length=20)
+    vehicle_plate_number = models.CharField(max_length=20, blank=True, null=True, help_text="Vehicle plate number (if applicable)")
     reason = models.TextField(blank=True, null=True, help_text="Reason for visit")
     
     # One-time PIN
@@ -455,6 +610,9 @@ class VisitorRequest(models.Model):
         related_name='visitor_request'
     )
     
+    # PIN entry tracking - when guard enters the PIN at guard station
+    pin_entered_at = models.DateTimeField(null=True, blank=True, help_text="Timestamp when PIN was entered at guard station")
+    
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -477,6 +635,10 @@ class VisitorRequest(models.Model):
             
         # Check if PIN has been used
         if self.status == 'used':
+            return False
+        
+        # Check if required date/time fields are present
+        if not self.visit_date or not self.visit_start_time or not self.visit_end_time:
             return False
         
         # Get current time (already timezone-aware)
@@ -553,7 +715,7 @@ class House(models.Model):
     price = models.DecimalField(max_digits=12, decimal_places=2)
     location = models.CharField(max_length=255)
     description = models.TextField(blank=True)
-    image = models.ImageField(upload_to='house_images/', blank=True, null=True)  # Keep for backward compatibility
+    image = models.ImageField(upload_to='house-images/', blank=True, null=True)  # Keep for backward compatibility
     listing_type = models.CharField(max_length=10, choices=LISTING_TYPE_CHOICES, default='sale')
     
     # Basic Property Information
@@ -626,7 +788,7 @@ class House(models.Model):
 class HouseImage(models.Model):
     """Model for storing multiple images per house"""
     house = models.ForeignKey(House, on_delete=models.CASCADE, related_name="images")
-    image = models.ImageField(upload_to='house_images/')
+    image = models.ImageField(upload_to='house-images/')
     order = models.IntegerField(default=0, help_text="Order for displaying images")
     created_at = models.DateTimeField(auto_now_add=True)
 

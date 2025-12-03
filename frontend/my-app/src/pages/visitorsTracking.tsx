@@ -29,6 +29,7 @@ interface VisitorRequestItem {
   visitor_name: string;
   visitor_email: string;
   visitor_contact_number: string;
+  vehicle_plate_number?: string | null;
   reason?: string;
   one_time_pin?: string | null;
   visit_date: string;
@@ -46,31 +47,19 @@ interface VisitorRequestItem {
   email_sent?: boolean;
   email_sent_at?: string | null;
   is_valid?: boolean;
+  pin_entered_at?: string | null;
   created_at: string;
   updated_at: string;
 }
 
 const API_URL = "http://127.0.0.1:8000/api";
-const VISITORS_API = `${API_URL}/admin/visitors/`;
 const VISITOR_REQUESTS_API = `${API_URL}/visitor-requests/`;
 
 const VisitorsTracking: React.FC = () => {
   const navigate = useNavigate();
   const token = getToken();
 
-  // Visitor states
-  const [visitors, setVisitors] = useState<Visitor[]>([]);
-  const [visitorSearchQuery, setVisitorSearchQuery] = useState("");
-  const [visitorFilter, setVisitorFilter] = useState<'all' | 'active' | 'completed'>('all');
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [formData, setFormData] = useState({
-    name: "",
-    gmail: "",
-    contact_number: "",
-    reason: "",
-    status: "pending",
-  });
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  // Visitor states (removed - Visitors section no longer needed)
 
   // Visitor Request states
   const [visitorRequests, setVisitorRequests] = useState<VisitorRequestItem[]>([]);
@@ -79,10 +68,9 @@ const VisitorsTracking: React.FC = () => {
 
   // Collapsible sections
   const [requestsExpanded, setRequestsExpanded] = useState(true);
-  const [visitorsExpanded, setVisitorsExpanded] = useState(true);
+  const [pinActivityExpanded, setPinActivityExpanded] = useState(true);
 
   // Loading states
-  const [loadingVisitors, setLoadingVisitors] = useState(false);
   const [loadingRequests, setLoadingRequests] = useState(false);
 
   useEffect(() => {
@@ -91,80 +79,11 @@ const VisitorsTracking: React.FC = () => {
       navigate('/login');
       return;
     }
-    fetchVisitors();
     fetchVisitorRequests();
   }, [token, navigate]);
 
   // ==================== VISITOR FUNCTIONS ====================
-  const fetchVisitors = async () => {
-    setLoadingVisitors(true);
-    try {
-      const res = await axios.get(VISITORS_API, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setVisitors(res.data);
-    } catch (err) {
-      console.error("Failed to fetch visitors", err);
-      toast.error("Failed to fetch visitors");
-    } finally {
-      setLoadingVisitors(false);
-    }
-  };
-
-  const handleDelete = async (id: number) => {
-    try {
-      await axios.delete(`${VISITORS_API}${id}/`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      toast.success("Visitor deleted successfully");
-      fetchVisitors();
-    } catch (err) {
-      console.error("Failed to delete visitor", err);
-      toast.error("Failed to delete visitor");
-    }
-  };
-
-  const handleAddVisitor = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-
-    try {
-      const payload: any = {
-        name: formData.name,
-        status: formData.status,
-      };
-
-      if (formData.gmail) payload.gmail = formData.gmail;
-      if (formData.contact_number) payload.contact_number = formData.contact_number;
-      if (formData.reason) payload.reason = formData.reason;
-
-      await axios.post(VISITORS_API, payload, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      toast.success("Visitor added successfully");
-      setIsModalOpen(false);
-      setFormData({
-        name: "",
-        gmail: "",
-        contact_number: "",
-        reason: "",
-        status: "pending",
-      });
-      fetchVisitors();
-    } catch (err: any) {
-      console.error("Failed to add visitor", err);
-      const errorMsg = err.response?.data?.detail || err.response?.data?.message || "Failed to add visitor";
-      toast.error(errorMsg);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-  };
+  // (Removed - Visitors section no longer needed)
 
   // ==================== VISITOR REQUEST FUNCTIONS ====================
   const fetchVisitorRequests = async () => {
@@ -333,6 +252,63 @@ const VisitorsTracking: React.FC = () => {
     }
   };
 
+  // Get PIN validity status based on request status and time window
+  const getPinValidityStatus = (req: VisitorRequestItem) => {
+    const now = new Date();
+    
+    // Check basic status first
+    if (req.status === 'declined') {
+      return { status: 'declined', label: 'Declined', color: '#f44336' };
+    }
+    if (req.status === 'pending_admin') {
+      return { status: 'pending', label: 'Pending Approval', color: '#ff9800' };
+    }
+    if (req.status === 'expired') {
+      return { status: 'expired', label: 'Expired', color: '#9e9e9e' };
+    }
+    if (req.status === 'used') {
+      return { status: 'used', label: 'Used', color: '#2196F3' };
+    }
+    
+    // For approved status, check time validity
+    if (req.status === 'approved') {
+      if (!req.visit_date || !req.visit_start_time || !req.visit_end_time) {
+        return { status: 'approved', label: 'Approved', color: '#4CAF50' };
+      }
+      
+      // Parse visit date and times
+      const visitStartDate = new Date(req.visit_date);
+      const visitEndDate = req.visit_end_date ? new Date(req.visit_end_date) : visitStartDate;
+      
+      // Parse times
+      const [startHours, startMinutes] = req.visit_start_time.split(':').map(Number);
+      const [endHours, endMinutes] = req.visit_end_time.split(':').map(Number);
+      
+      // Create datetime objects
+      const visitStart = new Date(visitStartDate);
+      visitStart.setHours(startHours, startMinutes, 0, 0);
+      
+      const visitEnd = new Date(visitEndDate);
+      visitEnd.setHours(endHours, endMinutes, 0, 0);
+      
+      // If end time is before start time on same day, assume it spans to next day
+      if (visitEnd <= visitStart && visitStartDate.getTime() === visitEndDate.getTime()) {
+        visitEnd.setDate(visitEnd.getDate() + 1);
+      }
+      
+      // Check time validity
+      if (now < visitStart) {
+        return { status: 'not_ready', label: 'Not Yet Ready', color: '#ff9800' };
+      } else if (now > visitEnd) {
+        return { status: 'expired', label: 'Expired', color: '#9e9e9e' };
+      } else {
+        return { status: 'approved', label: 'Approved (Ready)', color: '#4CAF50' };
+      }
+    }
+    
+    return { status: 'unknown', label: 'Unknown', color: '#666' };
+  };
+
   // ==================== FILTERED DATA ====================
   // Filter visitor requests
   const filteredRequests = visitorRequests.filter(req => {
@@ -351,40 +327,12 @@ const VisitorsTracking: React.FC = () => {
     return true;
   });
 
-  // Filter visitors
-  const filteredVisitors = visitors.filter(v => {
-    // Status filter
-    if (visitorFilter === 'active') {
-      if (!v.time_in || v.time_out) return false;
-    } else if (visitorFilter === 'completed') {
-      if (!v.time_out) return false;
-    }
-
-    // Search filter
-    if (visitorSearchQuery) {
-      const query = visitorSearchQuery.toLowerCase();
-      return (
-        v.name.toLowerCase().includes(query) ||
-        (v.contact_number?.toLowerCase().includes(query) ?? false) ||
-        v.status.toLowerCase().includes(query)
-      );
-    }
-    return true;
-  });
-
   // ==================== STATS ====================
   const requestStats = {
     total: visitorRequests.length,
     pending: visitorRequests.filter(r => r.status === 'pending_admin').length,
     approved: visitorRequests.filter(r => r.status === 'approved').length,
     declined: visitorRequests.filter(r => r.status === 'declined').length,
-  };
-
-  const visitorStats = {
-    total: visitors.length,
-    checkedInToday: visitors.filter(v => v.time_in && new Date(v.time_in).toDateString() === new Date().toDateString()).length,
-    totalTimedOut: visitors.filter(v => v.time_out).length,
-    active: visitors.filter(v => v.time_in && !v.time_out).length,
   };
 
   return (
@@ -397,7 +345,7 @@ const VisitorsTracking: React.FC = () => {
           <div className="visitors-tracking-container">
             <div className="header-section">
               <h2>Visitors Tracking</h2>
-              <p style={{ color: '#666', marginTop: '5px' }}>Manage visitor requests and track visitor check-ins</p>
+              <p style={{ color: '#666', marginTop: '5px' }}>Manage visitor requests and track PIN entry activity</p>
             </div>
 
             {/* Combined Stats Dashboard */}
@@ -438,8 +386,6 @@ const VisitorsTracking: React.FC = () => {
                 <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#4CAF50' }}>{requestStats.approved}</div>
                 <div style={{ fontSize: '14px', color: '#666', marginTop: '5px' }}>Approved</div>
               </div>
-              
-              {/* Visitor Stats */}
               <div style={{ 
                 padding: '20px', 
                 background: 'white', 
@@ -447,28 +393,10 @@ const VisitorsTracking: React.FC = () => {
                 boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
                 
               }}>
-                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#2196F3' }}>{visitorStats.total}</div>
-                <div style={{ fontSize: '14px', color: '#666', marginTop: '5px' }}>Total Visitors</div>
-              </div>
-              <div style={{ 
-                padding: '20px', 
-                background: 'white', 
-                borderRadius: '12px', 
-                boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-                
-              }}>
-                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#4b4b4b' }}>{visitorStats.checkedInToday}</div>
-                <div style={{ fontSize: '14px', color: '#666', marginTop: '5px' }}>Checked-in Today</div>
-              </div>
-              <div style={{ 
-                padding: '20px', 
-                background: 'white', 
-                borderRadius: '12px', 
-                boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-                
-              }}>
-                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#22c55e' }}>{visitorStats.active}</div>
-                <div style={{ fontSize: '14px', color: '#666', marginTop: '5px' }}>Active Now</div>
+                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#2196F3' }}>
+                  {visitorRequests.filter(r => r.pin_entered_at).length}
+                </div>
+                <div style={{ fontSize: '14px', color: '#666', marginTop: '5px' }}>PIN Entries</div>
               </div>
             </div>
 
@@ -577,6 +505,9 @@ const VisitorsTracking: React.FC = () => {
                               <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', fontSize: '14px', color: '#666' }}>
                                 <span><strong>Email:</strong> {req.visitor_email}</span>
                                 <span><strong>Contact:</strong> {req.visitor_contact_number || 'N/A'}</span>
+                                {req.vehicle_plate_number && (
+                                  <span><strong>Vehicle Plate:</strong> {req.vehicle_plate_number}</span>
+                                )}
                                 <span><strong>Homeowner:</strong> {req.resident_name || req.resident_username}</span>
                               </div>
                             </div>
@@ -604,6 +535,16 @@ const VisitorsTracking: React.FC = () => {
                             {req.one_time_pin && (
                               <div>
                                 <strong>PIN:</strong> <span style={{ fontFamily: 'monospace', fontSize: '16px', fontWeight: 'bold', color: '#2e6F40' }}>{req.one_time_pin}</span>
+                              </div>
+                            )}
+                            {req.pin_entered_at && (
+                              <div style={{ 
+                                padding: '8px 12px', 
+                                background: '#e3f2fd', 
+                                borderRadius: '6px',
+                                borderLeft: '3px solid #2196F3'
+                              }}>
+                                <strong>🔑 PIN Entered:</strong> {new Date(req.pin_entered_at).toLocaleString()}
                               </div>
                             )}
                             {req.reason && <div><strong>Reason:</strong> {req.reason}</div>}
@@ -667,27 +608,6 @@ const VisitorsTracking: React.FC = () => {
                             </button>
                           </div>
 
-                          {req.pdf_url && (
-                            <div style={{ marginTop: '10px' }}>
-                              <a
-                                href={req.pdf_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                style={{
-                                  padding: '8px 16px',
-                                  backgroundColor: '#2196F3',
-                                  color: 'white',
-                                  textDecoration: 'none',
-                                  borderRadius: '6px',
-                                  fontSize: '14px',
-                                  display: 'inline-block'
-                                }}
-                              >
-                                📄 Download PDF
-                              </a>
-                            </div>
-                          )}
-
                           <div style={{ fontSize: '12px', color: '#999', marginTop: '10px' }}>
                             Created: {new Date(req.created_at).toLocaleString()}
                           </div>
@@ -699,8 +619,9 @@ const VisitorsTracking: React.FC = () => {
               )}
             </div>
 
-            {/* Visitors Section */}
+            {/* PIN Entry Activity Log Section */}
             <div style={{ 
+              marginBottom: '30px',
               background: 'white',
               borderRadius: '12px',
               boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
@@ -711,286 +632,125 @@ const VisitorsTracking: React.FC = () => {
                   padding: '20px',
                   background: '#f8f9fa',
                   borderBottom: '2px solid #e0e0e0',
-                  cursor: 'pointer',
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center'
                 }}
-                onClick={() => setVisitorsExpanded(!visitorsExpanded)}
               >
                 <h3 style={{ margin: 0, color: '#2e6F40', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span>👥</span>
-                  Visitors
-                  {visitorStats.active > 0 && (
+                  <span>🔑</span>
+                  PIN Entry Activity Log
+                  {visitorRequests.filter(r => r.pin_entered_at).length > 0 && (
                     <span style={{
-                      background: '#22c55e',
+                      background: '#2196F3',
                       color: 'white',
                       padding: '2px 8px',
                       borderRadius: '12px',
                       fontSize: '12px',
                       fontWeight: 'bold'
                     }}>
-                      {visitorStats.active} active
+                      {visitorRequests.filter(r => r.pin_entered_at).length} entries
                     </span>
                   )}
                 </h3>
-                <span style={{ fontSize: '20px', color: '#666' }}>
-                  {visitorsExpanded ? '▼' : '▶'}
-                </span>
               </div>
 
-              {visitorsExpanded && (
-                <div style={{ padding: '20px' }}>
-                  {/* Search and Filter */}
-                  <div className="search-add-container">
-                    <select
-                      value={visitorFilter}
-                      onChange={(e) => setVisitorFilter(e.target.value as any)}
-                      style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '14px' }}
-                    >
-                      <option value="all">All Visitors</option>
-                      <option value="active">Active (Checked In)</option>
-                      <option value="completed">Completed (Checked Out)</option>
-                    </select>
-                    <input
-                      type="text"
-                      placeholder="Search by name, contact, or status..."
-                      value={visitorSearchQuery}
-                      onChange={(e) => setVisitorSearchQuery(e.target.value)}
-                      className="search-input"
-                    />
-                    <button
-                      className="btn-add-visitor"
-                      onClick={() => setIsModalOpen(true)}
-                    >
-                      + Add Visitor
-                    </button>
-                  </div>
-
-                  {/* Visitors Table */}
-                  <div className="table-wrapper">
-                    <table className="visitors-table">
-                      <thead>
-                        <tr>
-                          <th>Name of Visitors</th>
-                          <th>Contact</th>
-                          <th>Status</th>
-                          <th>Date</th>
-                          <th>Time In</th>
-                          <th>Time Out</th>
-                          <th>Action</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {loadingVisitors ? (
+              <div style={{ padding: '20px' }}>
+                  {visitorRequests.filter(r => r.pin_entered_at).length === 0 ? (
+                    <div style={{ padding: '40px', textAlign: 'center', color: '#666' }}>
+                      <p style={{ fontSize: '16px' }}>No PIN entries recorded yet.</p>
+                      <p style={{ fontSize: '14px', marginTop: '10px', color: '#999' }}>PIN entries will appear here when guards enter PINs at the guard station.</p>
+                    </div>
+                  ) : (
+                    <div className="table-wrapper">
+                      <table className="visitors-table">
+                        <thead>
                           <tr>
-                            <td colSpan={7} style={{ textAlign: 'center', padding: '40px' }}>Loading visitors...</td>
+                            <th>Visitor Name</th>
+                            <th>PIN</th>
+                            <th>Homeowner</th>
+                            <th>Request Status</th>
+                            <th>PIN Validity</th>
+                            <th>Date</th>
+                            <th>Time Entered</th>
                           </tr>
-                        ) : filteredVisitors.map((v) => (
-                          <tr key={v.id}>
-                            <td style={{ fontWeight: 500, color: '#2c3e50' }}>{v.name}</td>
-                            <td style={{ color: '#666', fontFamily: 'monospace' }}>{v.contact_number || "-"}</td>
-                            <td>
-                              <span style={{
-                                display: 'inline-block',
-                                padding: '6px 12px',
-                                borderRadius: '20px',
-                                fontSize: '0.75rem',
-                                fontWeight: 600,
-                                textTransform: 'uppercase',
-                                letterSpacing: '0.5px',
-                                ...(v.status === 'approved' 
-                                  ? { 
-                                      backgroundColor: '#d4edda', 
-                                      color: '#155724',
-                                      border: '1px solid #c3e6cb'
-                                    }
-                                  : v.status === 'pending' 
-                                  ? { 
-                                      backgroundColor: '#fff3cd', 
-                                      color: '#856404',
-                                      border: '1px solid #ffeaa7'
-                                    }
-                                  : { 
-                                      backgroundColor: '#f8d7da', 
-                                      color: '#721c24',
-                                      border: '1px solid #f5c6cb'
-                                    })
-                              }}>
-                                {v.status}
-                              </span>
-                            </td>
-                            <td style={{ color: '#555', fontSize: '0.85rem' }}>
-                              {formatDate(v.time_in || v.time_out || '')}
-                            </td>
-                            <td style={{ color: '#666', fontFamily: 'monospace', fontSize: '0.85rem' }}>
-                              {formatTime(v.time_in)}
-                            </td>
-                            <td style={{ color: '#666', fontFamily: 'monospace', fontSize: '0.85rem' }}>
-                              {formatTime(v.time_out)}
-                            </td>
-                            <td>
-                              <button
-                                onClick={() => {
-                                  if (window.confirm(`Are you sure you want to delete visitor "${v.name}"?`)) {
-                                    handleDelete(v.id);
-                                  }
-                                }}
-                                style={{
-                                  padding: '8px 16px',
-                                  background: '#dc3545',
-                                  color: 'white',
-                                  border: 'none',
-                                  borderRadius: '6px',
-                                  cursor: 'pointer',
-                                  fontSize: '0.8rem',
-                                  fontWeight: 600,
-                                  boxShadow: '0 2px 4px rgba(220,53,69,0.3)',
-                                  transition: 'all 0.2s ease'
-                                }}
-                                onMouseEnter={(e) => {
-                                  e.currentTarget.style.transform = 'translateY(-2px)';
-                                  e.currentTarget.style.boxShadow = '0 4px 8px rgba(220,53,69,0.4)';
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.currentTarget.style.transform = 'translateY(0)';
-                                  e.currentTarget.style.boxShadow = '0 2px 4px rgba(220,53,69,0.3)';
-                                }}
-                              >
-                                Delete
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                        {!loadingVisitors && filteredVisitors.length === 0 && (
-                          <tr>
-                            <td colSpan={7} style={{ 
-                              textAlign: 'center', 
-                              padding: '60px 20px', 
-                              color: '#666',
-                              background: '#f8f9fa'
-                            }}>
-                              <div style={{ fontSize: '3rem', marginBottom: '15px', opacity: 0.5 }}>👥</div>
-                              <h3 style={{ marginBottom: '10px', color: '#333' }}>No Visitors Found</h3>
-                              <p style={{ margin: 0 }}>
-                                {visitorSearchQuery 
-                                  ? 'No visitors match your search. Try adjusting your search query.' 
-                                  : 'No visitors have been registered yet. Click "+ Add Visitor" to add a new visitor.'}
-                              </p>
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                        </thead>
+                        <tbody>
+                          {visitorRequests
+                            .filter(r => r.pin_entered_at)
+                            .sort((a, b) => new Date(b.pin_entered_at!).getTime() - new Date(a.pin_entered_at!).getTime())
+                            .map((req) => {
+                              const entryDate = new Date(req.pin_entered_at!);
+                              const pinValidity = getPinValidityStatus(req);
+                              return (
+                                <tr key={req.id}>
+                                  <td style={{ fontWeight: 500, color: '#2c3e50' }}>{req.visitor_name}</td>
+                                  <td style={{ fontFamily: 'monospace', fontSize: '16px', fontWeight: 'bold', color: '#2e6F40' }}>
+                                    {req.one_time_pin || '-'}
+                                  </td>
+                                  <td style={{ color: '#666' }}>{req.resident_name || req.resident_username}</td>
+                                  <td>
+                                    <span style={{
+                                      display: 'inline-block',
+                                      padding: '6px 12px',
+                                      borderRadius: '20px',
+                                      fontSize: '0.75rem',
+                                      fontWeight: 600,
+                                      textTransform: 'uppercase',
+                                      letterSpacing: '0.5px',
+                                      backgroundColor: getStatusColor(req.status),
+                                      color: 'white'
+                                    }}>
+                                      {getStatusText(req.status)}
+                                    </span>
+                                  </td>
+                                  <td>
+                                    <span style={{
+                                      display: 'inline-block',
+                                      padding: '6px 12px',
+                                      borderRadius: '20px',
+                                      fontSize: '0.75rem',
+                                      fontWeight: 600,
+                                      letterSpacing: '0.5px',
+                                      backgroundColor: pinValidity.color,
+                                      color: 'white',
+                                      border: pinValidity.status === 'approved' ? '2px solid #22c55e' : 'none'
+                                    }}>
+                                      {pinValidity.status === 'approved' && '✓ '}
+                                      {pinValidity.status === 'not_ready' && '⏰ '}
+                                      {pinValidity.status === 'expired' && '⏱️ '}
+                                      {pinValidity.status === 'declined' && '✗ '}
+                                      {pinValidity.status === 'used' && '✓ '}
+                                      {pinValidity.label}
+                                    </span>
+                                  </td>
+                                  <td style={{ color: '#555', fontSize: '0.85rem' }}>
+                                    {entryDate.toLocaleDateString('en-US', { 
+                                      year: 'numeric', 
+                                      month: 'short', 
+                                      day: 'numeric' 
+                                    })}
+                                  </td>
+                                  <td style={{ color: '#2196F3', fontFamily: 'monospace', fontSize: '0.85rem', fontWeight: '600' }}>
+                                    {entryDate.toLocaleTimeString('en-US', { 
+                                      hour: '2-digit', 
+                                      minute: '2-digit',
+                                      second: '2-digit',
+                                      hour12: true 
+                                    })}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
-              )}
             </div>
           </div>
         </main>
       </div>
-
-      {/* Add Visitor Modal */}
-      {isModalOpen && (
-        <div className="modal-overlay" onClick={() => !isSubmitting && setIsModalOpen(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>Add New Visitor</h3>
-              <button
-                className="modal-close"
-                onClick={() => setIsModalOpen(false)}
-                disabled={isSubmitting}
-              >
-                ×
-              </button>
-            </div>
-            <form onSubmit={handleAddVisitor}>
-              <div className="form-group">
-                <label htmlFor="name">Name *</label>
-                <input
-                  type="text"
-                  id="name"
-                  name="name"
-                  value={formData.name}
-                  onChange={handleInputChange}
-                  required
-                  disabled={isSubmitting}
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="gmail">Email</label>
-                <input
-                  type="email"
-                  id="gmail"
-                  name="gmail"
-                  value={formData.gmail}
-                  onChange={handleInputChange}
-                  disabled={isSubmitting}
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="contact_number">Contact Number</label>
-                <input
-                  type="text"
-                  id="contact_number"
-                  name="contact_number"
-                  value={formData.contact_number}
-                  onChange={handleInputChange}
-                  disabled={isSubmitting}
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="reason">Reason for Visit</label>
-                <textarea
-                  id="reason"
-                  name="reason"
-                  value={formData.reason}
-                  onChange={handleInputChange}
-                  rows={3}
-                  disabled={isSubmitting}
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="status">Status *</label>
-                <select
-                  id="status"
-                  name="status"
-                  value={formData.status}
-                  onChange={handleInputChange}
-                  required
-                  disabled={isSubmitting}
-                >
-                  <option value="pending">Pending</option>
-                  <option value="approved">Approved</option>
-                  <option value="declined">Declined</option>
-                </select>
-              </div>
-
-              <div className="modal-actions">
-                <button
-                  type="button"
-                  className="btn-cancel"
-                  onClick={() => setIsModalOpen(false)}
-                  disabled={isSubmitting}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn-submit"
-                  disabled={isSubmitting}
-                >
-                  {isSubmitting ? "Adding..." : "Add Visitor"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </>
   );
 };

@@ -370,36 +370,40 @@ const AdminServiceFee: React.FC = () => {
 
         <main className="dashboard-main">
         <div className="admin-service-fee-container">
-          <div className="admin-service-fee-header">
+          {/* Header Section */}
+          <div className="header-section">
             <h1>Service Fee Management</h1>
-            <button
-              className="add-button"
-              onClick={() => {
-                setShowAddForm(true);
-                setEditingId(null);
-                setFormData({
-                  homeowner: 0,
-                  amount: '',
-                  due_date: '',
-                  status: 'unpaid',
-                  month: '',
-                  year: new Date().getFullYear(),
-                  notes: '',
-                });
-                setBillImageFile(null);
-                setImagePreview(null);
-                setPolicyImageFile(null);
-                setPolicyImagePreview(null);
-                setReceiptImageFile(null);
-                setReceiptImagePreview(null);
-              }}
-            >
-              <AddIcon /> Add Service Fee
-            </button>
           </div>
 
-          {/* Search/Filter Section */}
-          <div className="search-section">
+          {/* Stats Cards */}
+          <div className="stats-cards">
+            <div className="stat-card">
+              <div className="stat-value">{serviceFees.length}</div>
+              <div className="stat-label">Total Fees</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-value" style={{ color: '#4caf50' }}>
+                {serviceFees.filter(f => f.status === 'paid').length}
+              </div>
+              <div className="stat-label">Paid</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-value" style={{ color: '#f44336' }}>
+                {serviceFees.filter(f => f.status === 'unpaid').length}
+              </div>
+              <div className="stat-label">Unpaid</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-value" style={{ color: '#ff9800' }}>
+                {serviceFees.filter(f => f.status === 'delayed').length}
+              </div>
+              <div className="stat-label">Delayed</div>
+            </div>
+          </div>
+
+          {/* Controls Section */}
+          <div className="controls-section">
+            <div className="search-section">
             <div className="search-controls">
               <select
                 className="search-type-select"
@@ -428,6 +432,31 @@ const AdminServiceFee: React.FC = () => {
                 )}
               </div>
             </div>
+            </div>
+            <button
+              className="add-button"
+              onClick={() => {
+                setShowAddForm(true);
+                setEditingId(null);
+                setFormData({
+                  homeowner: 0,
+                  amount: '',
+                  due_date: '',
+                  status: 'unpaid',
+                  month: '',
+                  year: new Date().getFullYear(),
+                  notes: '',
+                });
+                setBillImageFile(null);
+                setImagePreview(null);
+                setPolicyImageFile(null);
+                setPolicyImagePreview(null);
+                setReceiptImageFile(null);
+                setReceiptImagePreview(null);
+              }}
+            >
+              <AddIcon /> Add Service Fee
+            </button>
           </div>
 
           {error && <div className="error-message">{error}</div>}
@@ -666,11 +695,28 @@ const AdminServiceFee: React.FC = () => {
           )}
 
           {loading ? (
-            <div className="loading-message">Loading service fees...</div>
+            <div className="loading-message">
+              <div style={{
+                border: '4px solid #f3f3f3',
+                borderTop: '4px solid #2e6F40',
+                borderRadius: '50%',
+                width: '50px',
+                height: '50px',
+                animation: 'spin 1s linear infinite',
+                margin: '0 auto 20px'
+              }}></div>
+              Loading service fees...
+            </div>
           ) : serviceFees.length === 0 ? (
-            <div className="empty-message">No service fees found.</div>
+            <div className="empty-message">
+              <div style={{ fontSize: '3rem', marginBottom: '15px', opacity: 0.5 }}>📋</div>
+              <h3 style={{ marginBottom: '10px', color: '#333' }}>No Service Fees Found</h3>
+              <p style={{ margin: 0, color: '#666' }}>
+                {searchTerm ? 'No service fees match your search criteria.' : 'Start by adding a new service fee.'}
+              </p>
+            </div>
           ) : (
-            <div className="table-container">
+            <div className="table-wrapper">
               <table className="service-fee-table">
                 <thead>
                   <tr>

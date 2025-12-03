@@ -10,6 +10,23 @@ import "./AdminDashboard.css";
 import Sidebar from "./Sidebar";
 import logo from '../images/logo.png';
 import API_URL from '../utils/config';
+import {
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  AreaChart,
+  Area
+} from 'recharts';
 
 interface HistoryRecord {
   id: number;
@@ -25,12 +42,15 @@ const historyTypeMap: Record<string, string> = {
   "-": "Deleted",
 };
 
+const COLORS = ['#2e6F40', '#FFC107', '#DC3545', '#17A2B8', '#6F42C1', '#E83E8C', '#20C997', '#FD7E14'];
+
 const ActivityLog: React.FC = () => {
   const navigate = useNavigate();
   const [records, setRecords] = useState<HistoryRecord[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [filterModel, setFilterModel] = useState<string>("all"); // "all" or specific model name
   const [filterUser, setFilterUser] = useState<string>("all"); // "all" or specific user
+  const [showGraphs, setShowGraphs] = useState<boolean>(true);
 
   useEffect(() => {
     const fetchHistory = async () => {
@@ -99,6 +119,92 @@ const ActivityLog: React.FC = () => {
       return dateB - dateA; // Descending order (newest first)
     });
   }, [records, filterModel, filterUser]);
+
+  // Chart data calculations
+  const activityOverTime = useMemo(() => {
+    const dateMap = new Map<string, number>();
+    filteredRecords.forEach(record => {
+      const date = new Date(record.history_date).toLocaleDateString('en-US', { 
+        year: 'numeric', 
+        month: 'short', 
+        day: 'numeric' 
+      });
+      dateMap.set(date, (dateMap.get(date) || 0) + 1);
+    });
+    
+    return Array.from(dateMap.entries())
+      .map(([date, count]) => ({ date, count }))
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .slice(-30); // Last 30 days
+  }, [filteredRecords]);
+
+  const activityByType = useMemo(() => {
+    const typeMap = new Map<string, number>();
+    filteredRecords.forEach(record => {
+      const type = historyTypeMap[record.history_type] || record.history_type;
+      typeMap.set(type, (typeMap.get(type) || 0) + 1);
+    });
+    
+    return Array.from(typeMap.entries()).map(([name, value]) => ({ name, value }));
+  }, [filteredRecords]);
+
+  const activityByModel = useMemo(() => {
+    const modelMap = new Map<string, number>();
+    filteredRecords.forEach(record => {
+      const model = record.model_name || 'Unknown';
+      modelMap.set(model, (modelMap.get(model) || 0) + 1);
+    });
+    
+    return Array.from(modelMap.entries())
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10); // Top 10 models
+  }, [filteredRecords]);
+
+  const activityByUser = useMemo(() => {
+    const userMap = new Map<string, number>();
+    filteredRecords.forEach(record => {
+      const user = record.history_user || 'System';
+      userMap.set(user, (userMap.get(user) || 0) + 1);
+    });
+    
+    return Array.from(userMap.entries())
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10); // Top 10 users
+  }, [filteredRecords]);
+
+  const activityByHour = useMemo(() => {
+    const hourMap = new Map<number, number>();
+    for (let i = 0; i < 24; i++) {
+      hourMap.set(i, 0);
+    }
+    
+    filteredRecords.forEach(record => {
+      const hour = new Date(record.history_date).getHours();
+      hourMap.set(hour, (hourMap.get(hour) || 0) + 1);
+    });
+    
+    return Array.from(hourMap.entries())
+      .map(([hour, count]) => ({ 
+        hour: `${hour.toString().padStart(2, '0')}:00`, 
+        count 
+      }));
+  }, [filteredRecords]);
+
+  const activityByDayOfWeek = useMemo(() => {
+    const dayMap = new Map<string, number>();
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    days.forEach(day => dayMap.set(day, 0));
+    
+    filteredRecords.forEach(record => {
+      const day = days[new Date(record.history_date).getDay()];
+      dayMap.set(day, (dayMap.get(day) || 0) + 1);
+    });
+    
+    return Array.from(dayMap.entries())
+      .map(([day, count]) => ({ day: day.substring(0, 3), count }));
+  }, [filteredRecords]);
 
   if (loading) {
     return (
@@ -227,6 +333,189 @@ const ActivityLog: React.FC = () => {
                 </div>
               )}
             </div>
+
+            {/* Clickable Graphs Section Header */}
+            {filteredRecords.length > 0 && (
+              <div 
+                className="graphs-header"
+                onClick={() => setShowGraphs(!showGraphs)}
+                style={{
+                  background: 'white',
+                  padding: '20px 25px',
+                  borderRadius: '12px',
+                  boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+                  marginBottom: '20px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  transition: 'all 0.3s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#f8f9fa';
+                  e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.15)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'white';
+                  e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
+                }}
+              >
+                <h3 style={{ 
+                  margin: 0,
+                  color: '#2c3e50',
+                  fontSize: '1.3rem',
+                  fontWeight: '600',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px'
+                }}>
+                  <span>📊</span>
+                  Activity Analytics & Visualizations
+                </h3>
+                <span style={{
+                  fontSize: '1.5rem',
+                  color: '#2e6F40',
+                  transition: 'transform 0.3s ease',
+                  transform: showGraphs ? 'rotate(180deg)' : 'rotate(0deg)'
+                }}>
+                  ▼
+                </span>
+              </div>
+            )}
+
+            {/* Graphs Section - Collapsible */}
+            {showGraphs && filteredRecords.length > 0 && (
+              <div className="charts-section">
+                <div className="charts-grid">
+                  {/* Activity Over Time */}
+                  <div className="chart-card">
+                    <h4 className="chart-title">Activity Over Time (Last 30 Days)</h4>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <AreaChart data={activityOverTime}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis 
+                          dataKey="date" 
+                          angle={-45}
+                          textAnchor="end"
+                          height={80}
+                          interval={activityOverTime.length > 7 ? Math.floor(activityOverTime.length / 7) : 0}
+                        />
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        <Area 
+                          type="monotone" 
+                          dataKey="count" 
+                          stroke="#2e6F40" 
+                          fill="#2e6F40" 
+                          fillOpacity={0.6}
+                          name="Activities"
+                          isAnimationActive={false}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  {/* Activity by Type */}
+                  <div className="chart-card">
+                    <h4 className="chart-title">Activity by Type</h4>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <PieChart>
+                        <Pie
+                          data={activityByType}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={false}
+                          label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                          outerRadius={100}
+                          fill="#8884d8"
+                          dataKey="value"
+                          isAnimationActive={false}
+                        >
+                          {activityByType.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                        <Legend />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  {/* Activity by Model */}
+                  <div className="chart-card">
+                    <h4 className="chart-title">Top 10 Models by Activity</h4>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={activityByModel} layout="vertical">
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis type="number" />
+                        <YAxis dataKey="name" type="category" width={120} />
+                        <Tooltip />
+                        <Legend />
+                        <Bar dataKey="value" fill="#2e6F40" name="Activities" isAnimationActive={false} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  {/* Activity by User */}
+                  <div className="chart-card">
+                    <h4 className="chart-title">Top 10 Users by Activity</h4>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={activityByUser}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis 
+                          dataKey="name" 
+                          angle={-45}
+                          textAnchor="end"
+                          height={80}
+                        />
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        <Bar dataKey="value" fill="#007bff" name="Activities" isAnimationActive={false} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  {/* Activity by Hour */}
+                  <div className="chart-card">
+                    <h4 className="chart-title">Activity by Hour of Day</h4>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <LineChart data={activityByHour}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="hour" />
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        <Line 
+                          type="monotone" 
+                          dataKey="count" 
+                          stroke="#E83E8C" 
+                          strokeWidth={2}
+                          name="Activities"
+                          isAnimationActive={false}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  {/* Activity by Day of Week */}
+                  <div className="chart-card">
+                    <h4 className="chart-title">Activity by Day of Week</h4>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={activityByDayOfWeek}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="day" />
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        <Bar dataKey="count" fill="#20C997" name="Activities" isAnimationActive={false} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div style={{ 
               marginBottom: '20px', 

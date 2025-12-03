@@ -439,15 +439,14 @@
 
 /* Graphs section */
 .dashboard-graphs {
-  
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
   gap: 20px;
   margin-top: 40px;
+  padding: 0 20px;
 }
 
 .graph-card {
-  margin-left: 25px;
   background: #fff;
   border-radius: 12px;
   padding: 20px;
@@ -467,8 +466,30 @@
 }
 
 /* Responsive */
+@media (max-width: 1200px) {
+  .dashboard-graphs {
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  }
+}
+
 @media (max-width: 992px) {
   .dashboard-graphs {
     grid-template-columns: 1fr;
+    padding: 0 15px;
+  }
+  
+  .graph-card {
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  .dashboard-graphs {
+    padding: 0 10px;
+    gap: 15px;
+  }
+  
+  .graph-card {
+    padding: 15px;
   }
 }

@@ -11,7 +11,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
 from pathlib import Path
-
+import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -21,12 +21,24 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-uo-ctnd*!(!2z!^5pg$1te=zjdjem@$*58i7@ex^q51o5q#wa!'
+SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-uo-ctnd*!(!2z!^5pg$1te=zjdjem@$*58i7@ex^q51o5q#wa!')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
-ALLOWED_HOSTS = ["localhost", "127.0.0.1", "0ca4f2492036.ngrok-free.app"]
+# Allow all hosts - works for Render, Vercel, and any deployment
+# Can be restricted via environment variable if needed
+ALLOWED_HOSTS = ['*'] if os.environ.get('ALLOW_ALL_HOSTS', 'True') == 'True' else os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+# Add Render host if RENDER_EXTERNAL_HOSTNAME is set
+if os.environ.get('RENDER_EXTERNAL_HOSTNAME'):
+    if os.environ.get('RENDER_EXTERNAL_HOSTNAME') not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(os.environ.get('RENDER_EXTERNAL_HOSTNAME'))
+# Add any additional hosts from environment
+if os.environ.get('ADDITIONAL_ALLOWED_HOSTS'):
+    additional_hosts = os.environ.get('ADDITIONAL_ALLOWED_HOSTS').split(',')
+    for host in additional_hosts:
+        if host.strip() and host.strip() not in ALLOWED_HOSTS:
+            ALLOWED_HOSTS.append(host.strip())
 
 
 # Application definition
@@ -50,6 +62,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',  # Add whitenoise for static files
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -59,22 +72,36 @@ MIDDLEWARE = [
     'simple_history.middleware.HistoryRequestMiddleware',
 ]
 
-CORS_ALLOW_ALL_ORIGINS = False
+# Allow all origins for CORS
+CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
 
+# Get frontend URL from environment variable (for reference)
+FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
+
+# CORS allowed origins (not needed when CORS_ALLOW_ALL_ORIGINS = True, but kept for reference)
 CORS_ALLOWED_ORIGINS = [
     "https://dc80fc099d37.ngrok-free.app",  # ngrok
     "http://localhost:3000",                 # desktop dev
     "http://127.0.0.1:3000",                 # desktop dev alternate
-    "http://192.168.1.100:3000",  
+    "http://192.168.1.100:3000",
 ]
 
+# Add frontend URL from environment if provided
+if FRONTEND_URL not in CORS_ALLOWED_ORIGINS:
+    CORS_ALLOWED_ORIGINS.append(FRONTEND_URL)
+
+# CSRF trusted origins - allow all for easier deployment
 CSRF_TRUSTED_ORIGINS = [
     "https://dc80fc099d37.ngrok-free.app",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "http://192.168.1.100:3000",
 ]
+
+# Add frontend URL to CSRF trusted origins
+if FRONTEND_URL not in CSRF_TRUSTED_ORIGINS:
+    CSRF_TRUSTED_ORIGINS.append(FRONTEND_URL)
 
 
 ROOT_URLCONF = 'core.urls'
@@ -100,6 +127,7 @@ WSGI_APPLICATION = 'core.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
+# Using SQLite only - no PostgreSQL
 
 DATABASES = {
     'default': {
@@ -143,7 +171,15 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+
+# WhiteNoise configuration for static files
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
+# Media files
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
@@ -167,8 +203,13 @@ REST_FRAMEWORK = {
         'rest_framework.authentication.SessionAuthentication',
     ),
     "DEFAULT_PERMISSION_CLASSES": (
-        "rest_framework.permissions.IsAuthenticated",  # login required by default
+        "rest_framework.permissions.AllowAny",  # Allow all by default
     ),
+    "DEFAULT_PARSER_CLASSES": [
+        "rest_framework.parsers.JSONParser",
+        "rest_framework.parsers.MultiPartParser",
+        "rest_framework.parsers.FormParser",
+    ],
 }
 
 
@@ -182,34 +223,26 @@ SIMPLE_JWT = {
 
 # RECAPTCHA_SECRET_KEY = '6Lc7-awrAAAAABrw3hpyIVb7RVwFFkFVozjOwHbT',
 
-import os
+# Media files are configured above in Static files section
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-
-MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
-
-# --- Email settings (default from update project) ---
-# Adjust these with your actual SMTP provider creds or env vars
+# --- Email settings (Gmail SMTP) ---
+# Gmail is configured and allowed
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
-EMAIL_PORT = int(os.environ.get('EMAIL_PORT', 587))
-EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', '1') == '1'
-EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
-EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
-DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER or 'no-reply@happyhomes.local')
+EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')  # Gmail SMTP
+EMAIL_PORT = int(os.environ.get('EMAIL_PORT', 587))  # Gmail port
+EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True') == 'True'  # Gmail requires TLS
+
+# Gmail credentials - use environment variables for production, fallback to defaults
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', 'happyphhomes@gmail.com')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', 'hlla ujjd bpjg dfqx')
+
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'Happy Homes <happyphhomes@gmail.com>')
 
 # Optional: destination inbox for contact form notifications
 CONTACT_INBOX_EMAIL = os.environ.get('CONTACT_INBOX_EMAIL', DEFAULT_FROM_EMAIL)
 
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.gmail.com'
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
-
-EMAIL_HOST_USER = 'happyphhomes@gmail.com'
-EMAIL_HOST_PASSWORD = 'hlla ujjd bpjg dfqx'  # ⚠️ Use the 16-char App Password from step 1
-
-DEFAULT_FROM_EMAIL = 'Happy Homes <happyphhomes@gmail.com>'
-FRONTEND_URL = 'http://localhost:3000'
+# Note: For Gmail to work, you need to:
+# 1. Enable "Less secure app access" OR
+# 2. Use an App Password (recommended): https://myaccount.google.com/apppasswords
+# 3. The password above should be a 16-character App Password, not your regular Gmail password
 

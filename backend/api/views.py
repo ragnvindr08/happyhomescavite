@@ -55,6 +55,8 @@ from .models import (
     Review,
     AvailableSlot,
     Maintenance,
+    MaintenanceRequest,
+    MaintenanceProvider,
     Post,
     Message,
     Subdivision,
@@ -66,6 +68,7 @@ from .models import (
     Alert,
     ContactInfo,
     ContactMessage,
+    EmergencyContact,
     FAQ,
     ServiceFee,
     BlogComment,
@@ -97,6 +100,7 @@ from .serializers import (
     AlertSerializer,
     ContactInfoSerializer,
     ContactMessageSerializer,
+    EmergencyContactSerializer,
     HistoricalRecordSerializer,
     FAQSerializer,
     ServiceFeeSerializer,
@@ -106,6 +110,8 @@ from .serializers import (
     CommunityMediaSerializer,
     VisitorRequestSerializer,
     VisitorSerializer,
+    MaintenanceRequestSerializer,
+    MaintenanceProviderSerializer,
 )
 
 from itertools import chain
@@ -328,6 +334,7 @@ class UserHistoryListView(generics.ListAPIView):
                 Alert.history.all(),
                 ContactInfo.history.all(),
                 ContactMessage.history.all(),
+                EmergencyContact.history.all(),
                 ResidentPin.history.all(),
                 Visitor.history.all(),
                 FAQ.history.all(),
@@ -340,6 +347,9 @@ class UserHistoryListView(generics.ListAPIView):
                 BlogComment.history.all(),
                 BillingRecord.history.all(),
                 AvailableSlot.history.all(),
+                VisitorRequest.history.all(),
+                MaintenanceRequest.history.all(),
+                MaintenanceProvider.history.all(),
             ))
 
             # Filter out None/invalid values and get model names for filtering
@@ -379,10 +389,8 @@ class UserHistoryListView(generics.ListAPIView):
             return qs_sorted
         except Exception as e:
             # Log the error and return empty queryset
-            import logging
             import traceback
-            logger = logging.getLogger(__name__)
-            logger.error(f"Error fetching user history: {str(e)}\n{traceback.format_exc()}")
+            print(f"Error fetching user history: {str(e)}\n{traceback.format_exc()}")
             return []
 
 @api_view(['POST'])
@@ -763,7 +771,7 @@ def get_posts(request):
     if request.method == 'GET':
         # Anyone can view posts
         posts = Post.objects.all()
-        serializer = PostSerializer(posts, many=True)
+        serializer = PostSerializer(posts, many=True, context={'request': request})
         return Response(serializer.data)
     elif request.method == 'POST':
         # Only authenticated users (preferably admins) can create posts
@@ -772,18 +780,22 @@ def get_posts(request):
                 {'detail': 'Authentication required to create posts'},
                 status=status.HTTP_401_UNAUTHORIZED
             )
-        serializer = PostSerializer(data=request.data)
+        serializer = PostSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            post = serializer.save()
+            # Re-serialize with image URL
+            response_serializer = PostSerializer(post, context={'request': request})
+            return Response(response_serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_user_posts(request):
-    posts = Post.objects.filter(user=request.user)
-    serializer = PostSerializer(posts, many=True)
+    # Post model doesn't have a user field, so return all posts for now
+    # or filter by some other criteria if needed
+    posts = Post.objects.all()
+    serializer = PostSerializer(posts, many=True, context={'request': request})
     return Response(serializer.data)
 
 
@@ -842,8 +854,60 @@ def post_detail(request, pk):
                 {'detail': 'Only admins can delete posts'},
                 status=status.HTTP_403_FORBIDDEN
             )
-        post.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        try:
+            from django.db import transaction
+            
+            # Store image path before deletion (if exists)
+            image_path = None
+            try:
+                if post.image:
+                    image_path = str(post.image.name) if hasattr(post.image, 'name') and post.image.name else None
+            except Exception as img_path_error:
+                print(f"[WARNING] Could not get image path: {img_path_error}")
+            
+            # Use transaction to ensure atomic deletion
+            with transaction.atomic():
+                post_id = post.id
+                # Delete the post (BlogComment will be deleted automatically due to CASCADE)
+                # HistoricalRecords will handle the history entry
+                post.delete()
+            
+            # Delete the image file after post deletion (if it exists)
+            # Do this outside the transaction to avoid file system issues affecting DB
+            if image_path:
+                try:
+                    from django.core.files.storage import default_storage
+                    if default_storage.exists(image_path):
+                        default_storage.delete(image_path)
+                        print(f"[INFO] Deleted image file: {image_path}")
+                except Exception as img_error:
+                    # Log but don't fail if image deletion fails
+                    print(f"[WARNING] Could not delete post image file {image_path}: {img_error}")
+            
+            print(f"[INFO] Successfully deleted post {post_id}")
+            return Response({'detail': 'Post deleted successfully'}, status=status.HTTP_200_OK)
+        except Post.DoesNotExist:
+            return Response(
+                {'detail': 'Post not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            import traceback
+            error_trace = traceback.format_exc()
+            error_msg = str(e)
+            error_type = type(e).__name__
+            print(f"[ERROR] Error deleting post {pk}: {error_msg}")
+            print(f"[ERROR] Error type: {error_type}")
+            print(f"[ERROR] Traceback:\n{error_trace}")
+            
+            # Return more detailed error for debugging
+            return Response(
+                {
+                    'detail': f'Error deleting post: {error_msg}',
+                    'error_type': error_type
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -997,16 +1061,21 @@ class BookingViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         facility_id = self.request.query_params.get("facility_id")
 
+        # Ensure user is authenticated
+        if not self.request.user or not self.request.user.is_authenticated:
+            return Booking.objects.none()
+
         # Admins can see all bookings
         if self.request.user.is_staff:
             qs = Booking.objects.select_related('facility', 'user').all()
         else:
+            # Homeowners/residents see only their own bookings
             qs = Booking.objects.select_related('facility', 'user').filter(user=self.request.user)
 
         if facility_id:
             qs = qs.filter(facility_id=facility_id)
 
-        return qs.order_by("date", "start_time")
+        return qs.order_by("-date", "-start_time")  # Order by newest first
     
     def get_serializer_context(self):
         """Ensure request is always in serializer context"""
@@ -2094,12 +2163,55 @@ class ContactMessageViewSet(viewsets.ModelViewSet):
             fail_silently=True,
         )
 
+
+# --- Emergency Contacts ---
+class EmergencyContactViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing emergency contacts
+    
+    Permissions:
+    - GET (list, retrieve): All authenticated users can view active contacts
+    - POST/PUT/PATCH/DELETE: Only admins can manage contacts
+    """
+    queryset = EmergencyContact.objects.all().order_by('order', 'name')
+    serializer_class = EmergencyContactSerializer
+    authentication_classes = [JWTAuthentication]
+    
+    def get_permissions(self):
+        """Allow read access to all authenticated users, write access only to admins"""
+        if self.action in ['list', 'retrieve']:
+            return [IsAuthenticated()]
+        # For create, update, partial_update, destroy - require admin
+        return [IsAdminUser()]
+    
+    def get_queryset(self):
+        """Filter by active status if requested"""
+        queryset = super().get_queryset()
+        is_active = self.request.query_params.get('is_active', None)
+        if is_active is not None:
+            try:
+                is_active_bool = is_active.lower() == 'true'
+                queryset = queryset.filter(is_active=is_active_bool)
+            except (AttributeError, ValueError):
+                # If is_active param is invalid, ignore it
+                pass
+        return queryset
+
 # --- ViewSets ---
 @method_decorator(csrf_exempt, name='dispatch')
 class ReviewViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for Reviews
+    
+    Permissions:
+    - GET (list, retrieve): Anyone can view reviews (guests, users, admins)
+    - POST (create): Only authenticated users can create reviews
+    - PUT/PATCH (update): Only the review owner or admin can update
+    - DELETE: Only the review owner or admin can delete
+    """
     serializer_class = ReviewSerializer
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedOrReadOnly]
 
     def get_queryset(self):
         pin_id = self.request.query_params.get("pin_id")
@@ -2109,6 +2221,18 @@ class ReviewViewSet(viewsets.ModelViewSet):
             qs = qs.filter(pin_id=pin_id)
         
         return qs.order_by("-created_at")
+
+    def get_authenticators(self):
+        """
+        Override authentication to allow unauthenticated access for read operations.
+        This allows guests to view reviews without authentication.
+        """
+        request = getattr(self, 'request', None)
+        if request and request.method in ['GET', 'OPTIONS']:
+            # No authentication required for viewing reviews
+            return []
+        # Require authentication for create, update, delete (POST, PUT, PATCH, DELETE)
+        return [JWTAuthentication()]
 
     def perform_create(self, serializer):
         # Ensure user can only create one review per pin
@@ -3131,9 +3255,43 @@ def visitor_timeout(request, pk):
 from django.utils.timezone import now
 
 class VisitorTrackingViewSet(viewsets.ModelViewSet):
-    queryset = Visitor.objects.all().order_by("-time_in")
+    queryset = Visitor.objects.all()
     serializer_class = VisitorSerializer
     permission_classes = [IsAdminUser]
+    
+    def get_queryset(self):
+        """Return all visitors, including those without time_in (approved but not checked in yet)
+        Order by time_in (most recent first), then by id for those without time_in
+        """
+        return Visitor.objects.all().order_by('-time_in', '-id')
+
+    def create(self, request, *args, **kwargs):
+        """Override create to automatically set time_in when status is 'approved'"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        # If status is approved, set time_in to current time
+        if serializer.validated_data.get('status') == 'approved':
+            serializer.validated_data['time_in'] = now()
+        
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    def update(self, request, *args, **kwargs):
+        """Override update to automatically set time_in when status changes to 'approved'"""
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        
+        # If status is being changed to 'approved' and time_in is not already set
+        new_status = serializer.validated_data.get('status')
+        if new_status == 'approved' and not instance.time_in:
+            serializer.validated_data['time_in'] = now()
+        
+        self.perform_update(serializer)
+        return Response(serializer.data)
 
     @action(detail=True, methods=["patch"])
     def approve(self, request, pk=None):
@@ -3168,9 +3326,125 @@ class HouseListCreateView(generics.ListCreateAPIView):
     serializer_class = HouseSerializer
     authentication_classes = [JWTAuthentication]
     permission_classes = [permissions.IsAuthenticated]
+    
+    # CRITICAL: Add parser classes to handle multipart/form-data (file uploads)
+    from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def _handle_images(self, house, request):
+        """Handle multiple image uploads for a house - same as HouseViewSet"""
+        from .models import HouseImage
+        
+        try:
+            # Ensure house is saved before creating images
+            if not house.pk:
+                house.save()
+                print(f"[HouseListCreateView] Saved house first to get PK: {house.pk}")
+            
+            # Get images from request.FILES (FormData sends files here)
+            images = []
+            if hasattr(request, 'FILES') and request.FILES:
+                # Try to get images with key 'images'
+                images = request.FILES.getlist('images')
+                print(f"[HouseListCreateView] Received {len(images)} image(s) from request.FILES.getlist('images')")
+                
+                # If no images found, check all FILES keys for debugging
+                if not images:
+                    print(f"[HouseListCreateView] No images found with key 'images'. Available keys: {list(request.FILES.keys())}")
+                    for key in request.FILES.keys():
+                        files = request.FILES.getlist(key)
+                        print(f"[HouseListCreateView] Key '{key}': {len(files)} file(s)")
+                        if files:
+                            print(f"[HouseListCreateView] Found {len(files)} file(s) with key '{key}'")
+            else:
+                print(f"[HouseListCreateView] ⚠️ WARNING: request.FILES is empty or doesn't exist!")
+            
+            if images:
+                # Get current count for ordering
+                current_count = house.images.count() if house.pk else 0
+                print(f"[HouseListCreateView] Current image count: {current_count}, adding {len(images)} new image(s)")
+                
+                # Create HouseImage instances for each uploaded image
+                created_images = []
+                for index, image_file in enumerate(images):
+                    try:
+                        # Ensure house is saved before creating image
+                        if not house.pk:
+                            house.save()
+                            print(f"[HouseListCreateView] Saved house to get PK: {house.pk}")
+                        
+                        house_image = HouseImage.objects.create(
+                            house=house,
+                            image=image_file,
+                            order=current_count + index
+                        )
+                        created_images.append(house_image.id)
+                        print(f"[HouseListCreateView] ✅ Created HouseImage {current_count + index} (ID: {house_image.id}) for house {house.id}")
+                        
+                        # Verify the image was saved
+                        if house_image.image:
+                            print(f"[HouseListCreateView] HouseImage {house_image.id} has image: {house_image.image.name}")
+                        else:
+                            print(f"[HouseListCreateView] ⚠️ WARNING: HouseImage {house_image.id} has no image file!")
+                            
+                    except Exception as e:
+                        print(f"[HouseListCreateView] ❌ ERROR: Failed to create HouseImage {index}: {e}")
+                        import traceback
+                        print(traceback.format_exc())
+                        # Continue with other images even if one fails
+                
+                print(f"[HouseListCreateView] ✅ Successfully created {len(created_images)}/{len(images)} images")
+                return len(created_images)
+            else:
+                print(f"[HouseListCreateView] ⚠️ WARNING: No images to process for house {house.pk}")
+                return 0
+        except Exception as e:
+            print(f"[HouseListCreateView] ❌ ERROR: Error in _handle_images: {e}")
+            import traceback
+            print(traceback.format_exc())
+            # Don't raise - let the house creation succeed even if images fail
+            return 0
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        house = serializer.save(user=self.request.user)
+        print(f"[HouseListCreateView] House saved with PK: {house.pk}")
+        
+        # Handle images
+        images_created = self._handle_images(house, self.request)
+        print(f"[HouseListCreateView] Created {images_created} image(s) for house {house.pk}")
+    
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context['request'] = self.request
+        return context
+    
+    def create(self, request, *args, **kwargs):
+        """Override create to ensure images are included in response"""
+        print(f"[HouseListCreateView] ========== CREATING HOUSE ==========")
+        print(f"[HouseListCreateView] Request method: {request.method}")
+        print(f"[HouseListCreateView] Request.FILES exists: {hasattr(request, 'FILES')}")
+        print(f"[HouseListCreateView] Request.FILES keys: {list(request.FILES.keys()) if request.FILES else 'None'}")
+        
+        # Call parent create which will call perform_create (which handles images)
+        response = super().create(request, *args, **kwargs)
+        
+        # Reload house with images for proper serialization
+        house_id = response.data.get('id')
+        if house_id:
+            from django.db.models import Prefetch
+            from .models import HouseImage
+            house = House.objects.prefetch_related(
+                Prefetch('images', queryset=HouseImage.objects.all().order_by('order', 'created_at'))
+            ).select_related('user').get(pk=house_id)
+            
+            # Re-serialize with images
+            serializer = self.get_serializer(house, context={'request': request})
+            response.data.update(serializer.data)
+            
+            print(f"[HouseListCreateView] ✅ House {house_id} created with {house.images.count()} images")
+        
+        print(f"[HouseListCreateView] ====================================")
+        return response
 
 
 class HouseDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -3356,14 +3630,52 @@ class HouseViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         """Override create to ensure images are included in response"""
         print(f"[CREATE] ========== CREATING HOUSE ==========")
-        print(f"[CREATE] Files received: {list(request.FILES.keys()) if request.FILES else 'None'}")
-        images_in_request = request.FILES.getlist('images') if request.FILES else []
+        print(f"[CREATE] Request method: {request.method}")
+        print(f"[CREATE] Request content_type: {getattr(request, 'content_type', 'N/A')}")
+        print(f"[CREATE] Request.META CONTENT_TYPE: {request.META.get('CONTENT_TYPE', 'N/A')}")
+        print(f"[CREATE] request.FILES exists: {hasattr(request, 'FILES')}")
+        print(f"[CREATE] request.FILES type: {type(request.FILES)}")
+        print(f"[CREATE] request.FILES keys: {list(request.FILES.keys()) if request.FILES else 'None'}")
+        print(f"[CREATE] request.FILES dict: {dict(request.FILES) if request.FILES else 'Empty'}")
+        
+        # Try to get images from request.FILES
+        images_in_request = []
+        if request.FILES:
+            images_in_request = request.FILES.getlist('images')
+            print(f"[CREATE] Images from getlist('images'): {len(images_in_request)}")
+            
+            # Also check all files in request.FILES
+            all_files = []
+            for key in request.FILES.keys():
+                files = request.FILES.getlist(key)
+                all_files.extend(files)
+                print(f"[CREATE] Files with key '{key}': {len(files)}")
+            print(f"[CREATE] Total files in request.FILES: {len(all_files)}")
+        else:
+            print(f"[CREATE] ⚠️ WARNING: request.FILES is empty or doesn't exist!")
+        
         print(f"[CREATE] Images count in request: {len(images_in_request)}")
         
         # Create a copy of request.data without 'images' to avoid serializer validation issues
-        data = request.data.copy()
+        # NOTE: 'images' in request.data might be a list of file names, but actual files are in request.FILES
+        # IMPORTANT: Use dict() to create a mutable copy if request.data is a QueryDict
+        if hasattr(request.data, 'copy'):
+            data = request.data.copy()
+        else:
+            data = dict(request.data)
+        
+        # Remove 'images' from data dict if present (files are in request.FILES, not request.data)
         if 'images' in data:
-            data.pop('images', None)
+            print(f"[CREATE] Found 'images' in request.data (removing from data dict): {data.get('images')}")
+            if isinstance(data, dict):
+                data.pop('images', None)
+            else:
+                # If it's a QueryDict, use the proper method
+                data = dict(data)
+                data.pop('images', None)
+        
+        print(f"[CREATE] Data dict keys (after removing images): {list(data.keys())}")
+        print(f"[CREATE] Data dict: {data}")
         
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
@@ -3440,6 +3752,12 @@ class HouseViewSet(viewsets.ModelViewSet):
         house = serializer.save(user=self.request.user)
         print(f"[INFO] House saved with PK: {house.pk}")
         
+        # DEBUG: Check request.FILES before calling _handle_images
+        print(f"[DEBUG] perform_create - request.FILES exists: {hasattr(self.request, 'FILES')}")
+        print(f"[DEBUG] perform_create - request.FILES: {self.request.FILES if hasattr(self.request, 'FILES') else 'N/A'}")
+        print(f"[DEBUG] perform_create - request.FILES keys: {list(self.request.FILES.keys()) if hasattr(self.request, 'FILES') and self.request.FILES else 'N/A'}")
+        print(f"[DEBUG] perform_create - request.content_type: {getattr(self.request, 'content_type', 'N/A')}")
+        
         # Handle multiple images (house must have PK for ForeignKey)
         images_created = self._handle_images(house, self.request)
         print(f"[INFO] Created {images_created} image(s) for house {house.pk}")
@@ -3492,6 +3810,40 @@ class GuestHouseListView(generics.ListAPIView):
         context = super().get_serializer_context()
         context['request'] = self.request
         return context
+    
+    def list(self, request, *args, **kwargs):
+        """Override list to ensure images are included in response"""
+        response = super().list(request, *args, **kwargs)
+        
+        # Verify images are included in response
+        if hasattr(response, 'data') and isinstance(response.data, list):
+            for house_data in response.data:
+                house_id = house_data.get('id')
+                image_urls = house_data.get('image_urls', [])
+                images = house_data.get('images', [])
+                
+                # If no images found, try to manually add them
+                if len(image_urls) == 0 and len(images) == 0 and house_id:
+                    from .models import HouseImage
+                    try:
+                        house_images = HouseImage.objects.filter(house_id=house_id).order_by('order', 'created_at')
+                        if house_images.exists():
+                            manual_urls = []
+                            for img in house_images:
+                                if img.image:
+                                    try:
+                                        url = request.build_absolute_uri(img.image.url)
+                                        manual_urls.append(url)
+                                    except Exception as e:
+                                        print(f"[GUEST_LIST] Error building URL for image {img.id}: {e}")
+                            
+                            if manual_urls:
+                                house_data['image_urls'] = manual_urls
+                                print(f"[GUEST_LIST] Manually added {len(manual_urls)} image URLs for house {house_id}")
+                    except Exception as e:
+                        print(f"[GUEST_LIST] Error fetching images for house {house_id}: {e}")
+        
+        return response
 
 
 class GuestHouseDetailView(generics.RetrieveAPIView):
@@ -3815,9 +4167,18 @@ Happy Homes System
 # --- ViewSets ---
 @method_decorator(csrf_exempt, name='dispatch')
 class ReviewViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for Reviews
+    
+    Permissions:
+    - GET (list, retrieve): Anyone can view reviews (guests, users, admins)
+    - POST (create): Only authenticated users can create reviews
+    - PUT/PATCH (update): Only the review owner or admin can update
+    - DELETE: Only the review owner or admin can delete
+    """
     serializer_class = ReviewSerializer
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedOrReadOnly]
 
     def get_queryset(self):
         pin_id = self.request.query_params.get("pin_id")
@@ -3827,6 +4188,18 @@ class ReviewViewSet(viewsets.ModelViewSet):
             qs = qs.filter(pin_id=pin_id)
         
         return qs.order_by("-created_at")
+
+    def get_authenticators(self):
+        """
+        Override authentication to allow unauthenticated access for read operations.
+        This allows guests to view reviews without authentication.
+        """
+        request = getattr(self, 'request', None)
+        if request and request.method in ['GET', 'OPTIONS']:
+            # No authentication required for viewing reviews
+            return []
+        # Require authentication for create, update, delete (POST, PUT, PATCH, DELETE)
+        return [JWTAuthentication()]
 
     def perform_create(self, serializer):
         # Ensure user can only create one review per pin
@@ -4200,6 +4573,11 @@ def admin_change_user_password(request, user_id):
 # ============================================================================
 
 from .visitor_request_utils import generate_visitor_request_pdf, send_visitor_request_approval_email
+from .maintenance_request_utils import (
+    send_maintenance_request_created_emails,
+    send_maintenance_request_approval_email,
+    send_maintenance_request_decline_email
+)
 
 
 class VisitorRequestViewSet(viewsets.ModelViewSet):
@@ -4213,8 +4591,11 @@ class VisitorRequestViewSet(viewsets.ModelViewSet):
     - DELETE: Only admins can delete
     """
     serializer_class = VisitorRequestSerializer
-    authentication_classes = [JWTAuthentication]
+    authentication_classes = [JWTAuthentication]  # Default, overridden in get_authenticators for verify_pin
     permission_classes = [IsAuthenticated]
+    
+    # Explicitly allow POST for custom actions
+    http_method_names = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'trace']
     
     def get_queryset(self):
         """
@@ -4224,12 +4605,23 @@ class VisitorRequestViewSet(viewsets.ModelViewSet):
         """
         user = self.request.user
         
+        # Handle unauthenticated users (shouldn't happen for list, but safety check)
+        if not user or not user.is_authenticated:
+            return VisitorRequest.objects.none()
+        
+        # Use select_related to optimize queries and prevent serialization issues
+        # Note: visitor_record is nullable, so we handle it separately if needed
+        base_queryset = VisitorRequest.objects.select_related(
+            'resident', 
+            'approved_by'
+        )
+        
         if user.is_staff:
             # Admin can see all requests
-            queryset = VisitorRequest.objects.all()
+            queryset = base_queryset.all()
         else:
             # Residents see only their own requests
-            queryset = VisitorRequest.objects.filter(resident=user)
+            queryset = base_queryset.filter(resident=user)
         
         # Filter by status if provided
         status = self.request.query_params.get('status', None)
@@ -4244,9 +4636,104 @@ class VisitorRequestViewSet(viewsets.ModelViewSet):
         context['request'] = self.request
         return context
     
+    def get_authenticators(self):
+        """Override to allow unauthenticated access for verify_pin action"""
+        # Check action first (set after dispatch)
+        action = getattr(self, 'action', None)
+        if action == 'verify_pin':
+            return []  # No authentication required for PIN verification
+        
+        # Fallback: check request path from META (available during initialization)
+        try:
+            request = getattr(self, 'request', None)
+            if request:
+                # Try to get path from request object or META
+                path = getattr(request, 'path', None) or getattr(request, 'META', {}).get('PATH_INFO', '')
+                if path and 'verify_pin' in path:
+                    return []  # No authentication required for PIN verification
+        except (AttributeError, TypeError, KeyError):
+            pass
+        
+        return [JWTAuthentication()]
+    
+    def get_permissions(self):
+        """Override to allow unauthenticated access for verify_pin action"""
+        # Check action first (set after dispatch)
+        action = getattr(self, 'action', None)
+        if action == 'verify_pin':
+            return [AllowAny()]  # No permission required for PIN verification
+        
+        # Fallback: check request path from META
+        try:
+            request = getattr(self, 'request', None)
+            if request:
+                # Try to get path from request object or META
+                path = getattr(request, 'path', None) or getattr(request, 'META', {}).get('PATH_INFO', '')
+                if path and 'verify_pin' in path:
+                    return [AllowAny()]  # No permission required for PIN verification
+        except (AttributeError, TypeError, KeyError):
+            pass
+        
+        return [IsAuthenticated()]
+    
     def perform_create(self, serializer):
         """Set resident to current user when creating request"""
         serializer.save(resident=self.request.user)
+    
+    def list(self, request, *args, **kwargs):
+        """Override list to add error handling and safe serialization"""
+        try:
+            queryset = self.filter_queryset(self.get_queryset())
+            page = self.paginate_queryset(queryset)
+            
+            if page is not None:
+                # Paginated response
+                serializer = self.get_serializer(page, many=True)
+                return self.get_paginated_response(serializer.data)
+            
+            # Non-paginated response - serialize with error handling per object
+            serializer = self.get_serializer(queryset, many=True)
+            
+            # Filter out any objects that failed to serialize
+            safe_data = []
+            for i, obj in enumerate(queryset):
+                try:
+                    obj_serializer = self.get_serializer(obj)
+                    safe_data.append(obj_serializer.data)
+                except Exception as obj_error:
+                    import traceback
+                    print(f"[WARNING] Failed to serialize VisitorRequest {obj.id}: {str(obj_error)}")
+                    # Try to get at least basic data
+                    try:
+                        safe_data.append({
+                            'id': obj.id,
+                            'visitor_name': obj.visitor_name,
+                            'status': obj.status,
+                            'visit_date': str(obj.visit_date) if obj.visit_date else None,
+                            'error': 'Partial serialization'
+                        })
+                    except:
+                        # Skip this object if even basic serialization fails
+                        pass
+            
+            return Response(safe_data)
+            
+        except Exception as e:
+            import traceback
+            from django.conf import settings
+            
+            error_traceback = traceback.format_exc()
+            print(f"ERROR in VisitorRequestViewSet.list: {str(e)}")
+            print(f"Traceback: {error_traceback}")
+            
+            return Response(
+                {
+                    'error': f'Error fetching visitor requests: {str(e)}',
+                    'detail': str(e),
+                    'traceback': error_traceback if settings.DEBUG else None
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
     
     @action(detail=True, methods=['post'], permission_classes=[IsAdminUser])
     def approve(self, request, pk=None):
@@ -4272,6 +4759,27 @@ class VisitorRequestViewSet(viewsets.ModelViewSet):
             visitor_request.status = 'approved'
             visitor_request.approved_by = request.user
             visitor_request.approved_at = timezone.now()
+            visitor_request.save()
+            
+            # Create Visitor record so it appears in visitors list
+            # Find or create ResidentPin for the homeowner
+            from .models import ResidentPin, Visitor
+            resident_pin, _ = ResidentPin.objects.get_or_create(user=visitor_request.resident)
+            
+            # Create Visitor record (but don't set time_in yet - that happens when guard checks in)
+            visitor = Visitor.objects.create(
+                name=visitor_request.visitor_name,
+                gmail=visitor_request.visitor_email,
+                contact_number=visitor_request.visitor_contact_number or '',
+                reason=visitor_request.reason or '',
+                pin_entered=visitor_request.one_time_pin,
+                resident=resident_pin,
+                status='approved',  # Already approved via request
+                # Don't set time_in yet - guard will set it when checking in
+            )
+            
+            # Link visitor record to request
+            visitor_request.visitor_record = visitor
             visitor_request.save()
             
             # Generate PDF
@@ -4425,16 +4933,30 @@ class VisitorRequestViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Check if PIN was already used
+        # Check if PIN was already used (has time_in set)
         if visitor_request.visitor_record:
-            visitor_request.status = 'used'
-            visitor_request.save()
-            return Response(
-                {'error': 'PIN has already been used'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            if visitor_request.visitor_record.time_in:
+                visitor_request.status = 'used'
+                visitor_request.save()
+                return Response(
+                    {'error': 'PIN has already been used'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            else:
+                # Visitor record exists but not checked in yet - update it
+                visitor = visitor_request.visitor_record
+                visitor.time_in = timezone.now()
+                visitor.save()
+                visitor_request.status = 'used'
+                visitor_request.save()
+                serializer = VisitorSerializer(visitor)
+                return Response({
+                    'message': 'Check-in successful',
+                    'visitor': serializer.data
+                }, status=status.HTTP_200_OK)
         
-        # Find or create ResidentPin for the homeowner
+        # If no visitor record exists, create one (shouldn't happen if approve creates it, but safety check)
+        from .models import ResidentPin
         resident_pin, _ = ResidentPin.objects.get_or_create(user=visitor_request.resident)
         
         # Create Visitor record
@@ -4490,108 +5012,551 @@ class VisitorRequestViewSet(viewsets.ModelViewSet):
             {'message': 'Visitor request deleted successfully'},
             status=status.HTTP_200_OK
         )
+
+
+# ============================================================================
+# MAINTENANCE REQUEST VIEWSET
+# ============================================================================
+
+class MaintenanceRequestViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing maintenance requests
     
-    @action(detail=False, methods=['post'], permission_classes=[AllowAny])
-    def verify_pin(self, request):
+    Permissions:
+    - GET (list, retrieve): Residents see their own, admins see all
+    - POST (create): Only authenticated residents can create requests
+    - PUT/PATCH (update): Only admins can update (for approval)
+    - DELETE: Only admins can delete
+    """
+    serializer_class = MaintenanceRequestSerializer
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
         """
-        Guard/Entrance endpoint to verify one-time PIN
-        Returns visitor request details without creating Visitor record
-        Public endpoint - no authentication required
+        Filter requests based on user role:
+        - Residents see only their own requests
+        - Admins see all requests
         """
-        pin = request.data.get('pin')
+        user = self.request.user
         
-        if not pin:
+        if user.is_staff:
+            # Admin can see all requests
+            queryset = MaintenanceRequest.objects.all()
+        else:
+            # Residents see only their own requests
+            queryset = MaintenanceRequest.objects.filter(homeowner=user)
+        
+        # Filter by status if provided
+        status = self.request.query_params.get('status', None)
+        if status:
+            queryset = queryset.filter(status=status)
+        
+        return queryset.order_by('-created_at')
+    
+    def get_serializer_context(self):
+        """Pass request context to serializer for absolute URLs"""
+        context = super().get_serializer_context()
+        context['request'] = self.request
+        return context
+    
+    def perform_create(self, serializer):
+        """Set homeowner and send email notifications"""
+        maintenance_request = serializer.save(homeowner=self.request.user)
+        
+        # Send email notifications (non-blocking)
+        try:
+            send_maintenance_request_created_emails(maintenance_request)
+        except Exception as email_error:
+            print(f"[WARNING] Email notification failed (request still created): {email_error}")
+            import traceback
+            traceback.print_exc()
+    
+    def update(self, request, *args, **kwargs):
+        """
+        Allow homeowners to update their own pending requests
+        Admins can update any request
+        """
+        maintenance_request = self.get_object()
+        user = request.user
+        
+        # Check permissions
+        if not user.is_staff:
+            # Homeowners can only update their own requests
+            if maintenance_request.homeowner != user:
+                return Response(
+                    {'error': 'You can only update your own maintenance requests'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            # Homeowners can only update pending requests
+            if maintenance_request.status != 'pending':
+                return Response(
+                    {'error': 'You can only update pending requests. This request is already processed.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        # Proceed with update
+        partial = kwargs.pop('partial', False)
+        serializer = self.get_serializer(maintenance_request, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        
+        return Response(serializer.data)
+    
+    def perform_update(self, serializer):
+        """Save the updated request"""
+        serializer.save()
+    
+    def destroy(self, request, *args, **kwargs):
+        """
+        Delete maintenance request with proper validation
+        - Admins can delete any request
+        - Homeowners can only delete their own pending/declined requests
+        """
+        maintenance_request = self.get_object()
+        user = request.user
+        
+        # Admins can delete any request
+        if user.is_staff:
+            maintenance_request.delete()
             return Response(
-                {'error': 'PIN is required'},
+                {'message': 'Maintenance request deleted successfully'},
+                status=status.HTTP_200_OK
+            )
+        
+        # Homeowners can only delete their own requests
+        if maintenance_request.homeowner != user:
+            return Response(
+                {'error': 'You can only delete your own maintenance requests'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Homeowners can delete any of their own requests (pending, declined, approved, etc.)
+        # This allows them to clean up their request list
+        maintenance_request.delete()
+        return Response(
+            {'message': 'Maintenance request deleted successfully'},
+            status=status.HTTP_200_OK
+        )
+    
+    @action(detail=True, methods=['post'], permission_classes=[IsAdminUser])
+    def approve(self, request, pk=None):
+        """
+        Admin action to approve a maintenance request
+        - Updates status
+        - Sends email to homeowner
+        """
+        maintenance_request = self.get_object()
+        
+        if maintenance_request.status != 'pending':
+            return Response(
+                {'error': f'Request is already {maintenance_request.get_status_display()}'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
         try:
-            visitor_request = VisitorRequest.objects.select_related('resident').get(one_time_pin=pin)
-        except VisitorRequest.DoesNotExist:
+            # Update status and approval info
+            maintenance_request.status = 'approved'
+            maintenance_request.approved_by = request.user
+            maintenance_request.approved_at = timezone.now()
+            maintenance_request.save()
+            
+            # Send approval email
+            try:
+                send_maintenance_request_approval_email(maintenance_request)
+            except Exception as email_error:
+                print(f"[WARNING] Failed to send approval email: {email_error}")
+            
+            serializer = self.get_serializer(maintenance_request)
+            return Response({
+                'message': 'Maintenance request approved successfully',
+                'maintenance_request': serializer.data
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
             return Response(
-                {
-                    'valid': False,
-                    'error': 'Invalid PIN - PIN not found'
-                },
-                status=status.HTTP_200_OK
+                {'error': f'Failed to approve request: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=True, methods=['post'], permission_classes=[IsAdminUser])
+    def decline(self, request, pk=None):
+        """
+        Admin action to decline a maintenance request
+        - Updates status with decline reason
+        - Sends email to homeowner
+        """
+        maintenance_request = self.get_object()
+        declined_reason = request.data.get('declined_reason', '')
+        
+        if maintenance_request.status != 'pending':
+            return Response(
+                {'error': f'Request is already {maintenance_request.get_status_display()}'},
+                status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Check PIN status
-        is_valid = visitor_request.is_valid()
-        is_used = visitor_request.visitor_record is not None
-        is_expired = visitor_request.status == 'expired'
+        try:
+            maintenance_request.status = 'declined'
+            maintenance_request.declined_reason = declined_reason
+            maintenance_request.approved_by = request.user
+            maintenance_request.approved_at = timezone.now()
+            maintenance_request.save()
+            
+            # Send decline email
+            try:
+                send_maintenance_request_decline_email(maintenance_request)
+            except Exception as email_error:
+                print(f"[WARNING] Failed to send decline email: {email_error}")
+            
+            serializer = self.get_serializer(maintenance_request)
+            return Response({
+                'message': 'Maintenance request declined',
+                'maintenance_request': serializer.data
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return Response(
+                {'error': f'Failed to decline request: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=True, methods=['post', 'patch'], permission_classes=[IsAdminUser])
+    def add_feedback(self, request, pk=None):
+        """
+        Admin action to add or update feedback on a maintenance request
+        Can be used at any stage (pending, approved, in_progress, completed)
+        """
+        maintenance_request = self.get_object()
+        admin_feedback = request.data.get('admin_feedback', '')
+        
+        try:
+            maintenance_request.admin_feedback = admin_feedback
+            maintenance_request.save()
+            
+            serializer = self.get_serializer(maintenance_request)
+            return Response({
+                'message': 'Admin feedback updated successfully',
+                'maintenance_request': serializer.data
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return Response(
+                {'error': f'Failed to update feedback: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    def _get_status_message(self, visitor_request, is_valid, is_used, is_expired, is_approved, 
+                           is_pending, is_declined, is_not_yet_valid, is_past_valid, is_within_window,
+                           visit_datetime_start, visit_datetime_end):
+        """Helper method to generate detailed status message based on time/date intervals"""
+        from django.utils import timezone
+        from django.utils.formats import date_format, time_format
+        
+        # Wrong PIN case is handled before this method is called
+        
+        if is_declined:
+            return 'This PIN has been declined by admin'
+        
+        if is_pending:
+            return 'This PIN is pending admin approval'
+        
+        if is_used:
+            return 'This PIN has already been used'
+        
+        if is_expired:
+            return 'This PIN has expired'
+        
+        if is_approved:
+            # Check time/date scenarios - order matters!
+            # First check if it's past the valid time window
+            if is_past_valid and visit_datetime_end:
+                # Format the end datetime for display
+                end_str = visit_datetime_end.strftime('%Y-%m-%d %I:%M %p')
+                return f'PIN is approved, but has passed the valid time/date. Valid until: {end_str}'
+            
+            # Then check if it's not yet valid (before the time window)
+            if is_not_yet_valid and visit_datetime_start:
+                # Format the start datetime for display
+                start_str = visit_datetime_start.strftime('%Y-%m-%d %I:%M %p')
+                return f'PIN is approved, but the visit time/date is not yet valid. Valid from: {start_str}'
+            
+            # If within window, it's valid
+            if is_within_window:
+                return 'PIN is valid and ready for use'
+            
+            # Fallback if date/time info is missing
+            return 'PIN is approved'
+        
+        # Fallback for any other status
+        if is_expired or not is_valid:
+            return 'This PIN has expired or is outside valid time window'
+        
+        return 'Unknown status'
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def verify_pin_view(request):
+    """
+    Standalone view for PIN verification (bypasses ViewSet routing issues)
+    Guard/Entrance endpoint to verify one-time PIN
+    Returns visitor request details without creating Visitor record
+    Public endpoint - no authentication required
+    """
+    from .models import VisitorRequest
+    from django.utils import timezone
+    from datetime import datetime, timedelta
+    from django.conf import settings
+    from rest_framework import status
+    import traceback
+    
+    # Safely get PIN from request
+    try:
+        if hasattr(request, 'data'):
+            pin = request.data.get('pin')
+        else:
+            import json
+            body = request.body.decode('utf-8')
+            data = json.loads(body) if body else {}
+            pin = data.get('pin')
+    except (AttributeError, json.JSONDecodeError, UnicodeDecodeError) as e:
+        return Response(
+            {'error': f'Invalid request format: {str(e)}'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    if not pin:
+        return Response(
+            {'error': 'PIN is required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        visitor_request = VisitorRequest.objects.select_related('resident', 'visitor_record').get(one_time_pin=pin)
+    except VisitorRequest.DoesNotExist:
+        return Response(
+            {
+                'valid': False,
+                'error': 'Invalid PIN - PIN not found'
+            },
+            status=status.HTTP_200_OK
+        )
+    except Exception as e:
+        traceback.print_exc()
+        return Response(
+            {
+                'valid': False,
+                'error': f'Error looking up PIN: {str(e)}'
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+    
+    try:
+        # Check basic PIN status - handle visitor_record safely
+        is_used = False
+        visitor_record = None
+        is_checked_out = False
+        try:
+            if visitor_request.visitor_record:
+                visitor_record = visitor_request.visitor_record
+                if hasattr(visitor_record, 'time_in'):
+                    is_used = visitor_record.time_in is not None
+                if hasattr(visitor_record, 'time_out'):
+                    is_checked_out = visitor_record.time_out is not None
+        except (AttributeError, Exception):
+            is_used = False
+            is_checked_out = False
+        
+        # AUTO CHECKOUT LOGIC: If visitor is checked in but not checked out, perform checkout
+        if visitor_record and is_used and not is_checked_out:
+            visitor_record.time_out = timezone.now()
+            visitor_record.save(update_fields=['time_out'])
+            is_checked_out = True
+            
+            # Optional: Send notification
+            try:
+                if visitor_record.resident and visitor_record.resident.user.email:
+                    from django.core.mail import send_mail
+                    from django.conf import settings
+                    send_mail(
+                        subject="🚪 Visitor Checked Out",
+                        message=f"Visitor {visitor_record.name} has checked out successfully at {timezone.now().strftime('%Y-%m-%d %H:%M:%S')}.",
+                        from_email=settings.DEFAULT_FROM_EMAIL,
+                        recipient_list=[visitor_record.resident.user.email],
+                        fail_silently=True,
+                    )
+            except Exception:
+                pass  # Don't fail if email fails
+        
+        is_expired_status = visitor_request.status == 'expired'
         is_approved = visitor_request.status == 'approved'
         is_pending = visitor_request.status == 'pending_admin'
         is_declined = visitor_request.status == 'declined'
         
-        # Format dates and times with proper timezone handling
-        from django.utils import timezone
-        from datetime import datetime, timedelta
-        
         visit_datetime_start = None
         visit_datetime_end = None
+        now = timezone.now()
+        
+        # Check time/date validity
+        is_not_yet_valid = False
+        is_past_valid = False
+        is_within_window = False
         
         if visitor_request.visit_date and visitor_request.visit_start_time:
             visit_datetime_start_naive = datetime.combine(visitor_request.visit_date, visitor_request.visit_start_time)
-            # timezone.make_aware uses the default timezone from settings
             visit_datetime_start = timezone.make_aware(visit_datetime_start_naive)
             
         end_date = visitor_request.visit_end_date if visitor_request.visit_end_date else visitor_request.visit_date
         if end_date and visitor_request.visit_end_time:
             visit_datetime_end_naive = datetime.combine(end_date, visitor_request.visit_end_time)
-            # timezone.make_aware uses the default timezone from settings
             visit_datetime_end = timezone.make_aware(visit_datetime_end_naive)
             
-            # Handle overnight visits (if end time is before start time on same day)
             if visit_datetime_end and visit_datetime_start and visit_datetime_end < visit_datetime_start and visitor_request.visit_date == end_date:
                 visit_datetime_end += timedelta(days=1)
         
+        # Check time/date intervals
+        if visit_datetime_start and visit_datetime_end:
+            if now < visit_datetime_start:
+                is_not_yet_valid = True
+            elif now > visit_datetime_end:
+                is_past_valid = True
+            else:
+                is_within_window = True
+        
+        # Record PIN entry time when PIN is entered at guard station
+        if not visitor_request.pin_entered_at:
+            visitor_request.pin_entered_at = timezone.now()
+            visitor_request.save(update_fields=['pin_entered_at'])
+        
+        # Determine overall validity (for check-in only, checkout is handled above)
+        is_valid = is_approved and not is_used and is_within_window and not is_expired_status and not is_past_valid
+        
         # Get status message
-        status_message = self._get_status_message(visitor_request, is_valid, is_used, is_expired, is_approved, is_pending, is_declined)
+        if is_checked_out:
+            checkout_time = visitor_record.time_out.strftime('%Y-%m-%d %I:%M %p') if visitor_record and visitor_record.time_out else 'now'
+            status_message = f'✅ Visitor {visitor_request.visitor_name} has been checked out successfully at {checkout_time}'
+        elif is_declined:
+            status_message = 'This PIN has been declined by admin'
+        elif is_pending:
+            status_message = 'This PIN is pending admin approval'
+        elif is_used:
+            status_message = 'This PIN has already been used (visitor already checked in)'
+        elif is_expired_status:
+            status_message = 'This PIN has expired'
+        elif is_approved:
+            if is_past_valid and visit_datetime_end:
+                end_str = visit_datetime_end.strftime('%Y-%m-%d %I:%M %p')
+                status_message = f'PIN is approved, but has passed the valid time/date. Valid until: {end_str}'
+            elif is_not_yet_valid and visit_datetime_start:
+                start_str = visit_datetime_start.strftime('%Y-%m-%d %I:%M %p')
+                status_message = f'PIN is approved, but the visit time/date is not yet valid. Valid from: {start_str}'
+            elif is_within_window:
+                status_message = 'PIN is valid and ready for use'
+            else:
+                status_message = 'PIN is approved'
+        else:
+            status_message = 'Unknown status'
         
         return Response({
-            'valid': is_valid and is_approved and not is_used,
+            'valid': is_valid or is_checked_out,  # Valid if can check-in OR just checked out
             'pin': pin,
+            'checked_out': is_checked_out,  # New field to indicate checkout happened
             'visitor_request': {
                 'id': visitor_request.id,
                 'visitor_name': visitor_request.visitor_name,
                 'visitor_email': visitor_request.visitor_email,
                 'visitor_contact_number': visitor_request.visitor_contact_number or '',
+                'vehicle_plate_number': visitor_request.vehicle_plate_number or '',
                 'reason': visitor_request.reason or '',
                 'visit_date': visitor_request.visit_date.strftime('%Y-%m-%d') if visitor_request.visit_date else '',
                 'visit_end_date': visitor_request.visit_end_date.strftime('%Y-%m-%d') if visitor_request.visit_end_date else None,
                 'visit_start_time': visitor_request.visit_start_time.strftime('%H:%M') if visitor_request.visit_start_time else '',
                 'visit_end_time': visitor_request.visit_end_time.strftime('%H:%M') if visitor_request.visit_end_time else '',
                 'status': visitor_request.status,
-                'resident_name': visitor_request.resident.username,
-                'resident_email': visitor_request.resident.email,
+                'resident_name': visitor_request.resident.username if visitor_request.resident else 'Unknown',
+                'resident_email': visitor_request.resident.email if visitor_request.resident else '',
                 'visit_datetime_start': visit_datetime_start.isoformat() if visit_datetime_start else None,
                 'visit_datetime_end': visit_datetime_end.isoformat() if visit_datetime_end else None,
             },
             'details': {
                 'is_approved': is_approved,
                 'is_used': is_used,
-                'is_expired': is_expired,
+                'is_checked_out': is_checked_out,  # New field
+                'is_expired': is_expired_status,
                 'is_valid': is_valid,
                 'is_pending': is_pending,
                 'is_declined': is_declined,
+                'is_not_yet_valid': is_not_yet_valid,
+                'is_past_valid': is_past_valid,
+                'is_within_window': is_within_window,
                 'status_message': status_message
             }
         }, status=status.HTTP_200_OK)
+    except Exception as e:
+        traceback.print_exc()
+        return Response(
+            {
+                'valid': False,
+                'error': f'Error processing PIN verification: {str(e)}',
+                'traceback': traceback.format_exc() if settings.DEBUG else None
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+class MaintenanceProviderViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing maintenance providers
     
-    def _get_status_message(self, visitor_request, is_valid, is_used, is_expired, is_approved, is_pending, is_declined):
-        """Helper method to generate status message"""
-        if is_declined:
-            return 'This PIN has been declined by admin'
-        if is_pending:
-            return 'This PIN is pending admin approval'
-        if is_used:
-            return 'This PIN has already been used'
-        if is_expired or not is_valid:
-            return 'This PIN has expired or is outside valid time window'
-        if is_approved:
-            return 'PIN is valid and ready for use'
-        return 'Unknown status'
+    Permissions:
+    - GET (list, retrieve): All authenticated users can view approved providers
+    - POST/PUT/PATCH/DELETE: Only admins can manage providers
+    """
+    serializer_class = MaintenanceProviderSerializer
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        """
+        Filter providers based on user role:
+        - All users see approved and active providers
+        - Admins see all providers (including unapproved/inactive)
+        - Filter by maintenance_type if provided
+        """
+        user = self.request.user
+        maintenance_type = self.request.query_params.get('maintenance_type', None)
+        
+        if user.is_staff:
+            # Admin can see all providers
+            queryset = MaintenanceProvider.objects.all()
+        else:
+            # Regular users see only approved and active providers
+            queryset = MaintenanceProvider.objects.filter(is_approved=True, is_active=True)
+        
+        # Filter by maintenance type if provided
+        if maintenance_type:
+            # Search in services field (comma-separated)
+            queryset = queryset.filter(services__icontains=maintenance_type)
+        
+        return queryset.order_by('-is_approved', '-is_active', 'name')
+    
+    def get_permissions(self):
+        """
+        Allow all authenticated users to view (GET, LIST),
+        but only admins can create, update, or delete.
+        """
+        if self.action in ['list', 'retrieve']:
+            return [IsAuthenticated()]
+        return [IsAuthenticated(), IsAdminUser()]
+    
+    def perform_create(self, serializer):
+        """Set created_by when creating a provider"""
+        serializer.save(created_by=self.request.user)
 
 

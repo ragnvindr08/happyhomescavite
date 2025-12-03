@@ -1,26 +1,91 @@
-import React, { FC } from "react";
+import React, { FC, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./Footer.css";
 import logoImage from '../images/logo.png';
+import { getToken } from '../utils/auth';
+import axios from 'axios';
+import API_URL from '../utils/config';
 
 const Footer: FC = () => {
   const navigate = useNavigate();
-  
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isVerified, setIsVerified] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    const token = getToken();
+    if (token) {
+      setIsLoggedIn(true);
+      axios
+        .get(`${API_URL}/profile/`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        .then(res => {
+          setIsAdmin(res.data.is_staff || false);
+          const verified = res.data.profile?.is_verified || res.data.is_verified || false;
+          setIsVerified(verified);
+        })
+        .catch(() => {
+          setIsLoggedIn(false);
+          setIsVerified(false);
+          setIsAdmin(false);
+        });
+    } else {
+      setIsLoggedIn(false);
+      setIsVerified(false);
+      setIsAdmin(false);
+    }
+  }, []);
+
+  // Quick Links - Available to everyone
   const quickLinks = [
-    { label: 'Home', href: '/home' },
-    { label: 'Community Map', href: '/map' },
-    { label: 'Book Amenities', href: '/booking' },
-    { label: 'Resident Profile', href: '/profile' },
-    { label: 'Contact Us', href: '/contact' },
+    { label: 'Home', href: '/home', requiresAuth: false, requiresVerified: false },
+    { label: 'Community Map', href: '/map', requiresAuth: false, requiresVerified: false },
+    { label: 'Book Amenities', href: '/booking-amenities', requiresAuth: true, requiresVerified: true },
+    { label: 'Resident Profile', href: '/profile', requiresAuth: true, requiresVerified: false },
+    { label: 'Contact Us', href: '/contact', requiresAuth: false, requiresVerified: false },
   ];
 
+  // Service Links - Conditional based on user status
   const serviceLinks = [
-    { label: 'Facilities', href: '/facilities' },
-    { label: 'Facility Booking', href: '/booking' },
-    { label: 'Sale & Rent Listings', href: '/admin-sales' },
-    { label: 'Billing & Payments', href: '/billing' },
-    { label: 'FAQs & Support', href: '/faq' },
+    { label: 'Facilities', href: '/facilities', requiresAuth: false, requiresVerified: false },
+    { label: 'Facility Booking', href: '/booking-amenities', requiresAuth: true, requiresVerified: true },
+    { label: 'Sale & Rent Listings', href: '/house-sales', requiresAuth: false, requiresVerified: false },
+    { label: 'Billing & Payments', href: '/billing', requiresAuth: true, requiresVerified: true },
+    { label: 'FAQs & Support', href: '/faq', requiresAuth: false, requiresVerified: false },
   ];
+
+  // Filter links based on authentication and verification status
+  const filterLinks = (links: typeof quickLinks) => {
+    return links.filter(link => {
+      if (link.requiresVerified && !isVerified) return false;
+      if (link.requiresAuth && !isLoggedIn) return false;
+      return true;
+    });
+  };
+
+  const handleLinkClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string, requiresAuth: boolean, requiresVerified: boolean) => {
+    e.preventDefault();
+    
+    // Check if link requires authentication
+    if (requiresAuth && !isLoggedIn) {
+      navigate('/login?form=true');
+      return;
+    }
+    
+    // Check if link requires verification
+    if (requiresVerified && !isVerified) {
+      alert('This feature is only available to verified homeowners. Please complete your verification to access this page.');
+      navigate('/profile');
+      return;
+    }
+    
+    navigate(href);
+  };
+
+  // Update links when auth status changes
+  const filteredQuickLinks = filterLinks(quickLinks);
+  const filteredServiceLinks = filterLinks(serviceLinks);
 
   const policyLinks = [
     { label: 'Privacy Policy', href: '/privacy-policy' },
@@ -74,9 +139,15 @@ const Footer: FC = () => {
           <div className="footer-column">
             <h3 className="footer-title">Quick Links</h3>
             <ul className="footer-links">
-              {quickLinks.map((link) => (
+              {filteredQuickLinks.map((link) => (
                 <li key={link.href}>
-                  <a href={link.href}>{link.label}</a>
+                  <a 
+                    href={link.href}
+                    onClick={(e) => handleLinkClick(e, link.href, link.requiresAuth, link.requiresVerified)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    {link.label}
+                  </a>
                 </li>
               ))}
             </ul>
@@ -86,9 +157,15 @@ const Footer: FC = () => {
           <div className="footer-column">
             <h3 className="footer-title">Services</h3>
             <ul className="footer-links">
-              {serviceLinks.map((link) => (
+              {filteredServiceLinks.map((link) => (
                 <li key={link.href}>
-                  <a href={link.href}>{link.label}</a>
+                  <a 
+                    href={link.href}
+                    onClick={(e) => handleLinkClick(e, link.href, link.requiresAuth, link.requiresVerified)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    {link.label}
+                  </a>
                 </li>
               ))}
             </ul>
@@ -103,11 +180,7 @@ const Footer: FC = () => {
                   <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
                 </svg>
                 <a 
-                  href="/contact" 
-                  onClick={(e) => {
-                    e.preventDefault();
-                    navigate('/contact');
-                  }}
+                  href="/contact"
                   style={{ cursor: 'pointer', textDecoration: 'none', color: 'inherit' }}
                 >
                   Happy Homes, Buhay na tubig, Imus, Cavite

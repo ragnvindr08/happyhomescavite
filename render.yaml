@@ -1,0 +1,41 @@
+services:
+  # Backend Web Service
+  - type: web
+    name: happy-homes-backend
+    env: python
+    buildCommand: cd backend && pip install -r requirements.txt && python manage.py collectstatic --noinput
+    startCommand: cd backend && python manage.py migrate && gunicorn core.wsgi:application --bind 0.0.0.0:$PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: False
+      - key: ALLOW_ALL_HOSTS
+        value: True
+      - key: FRONTEND_URL
+        fromService:
+          type: static_site
+          name: happy-homes-frontend
+          property: host
+      - key: EMAIL_HOST_USER
+        sync: false
+        value: happyphhomes@gmail.com
+      - key: EMAIL_HOST_PASSWORD
+        sync: false
+
+  # Frontend Static Site
+  - type: static_site
+    name: happy-homes-frontend
+    buildCommand: cd frontend/my-app && npm install && npm run build
+    staticPublishPath: frontend/my-app/dist
+    envVars:
+      - key: VITE_API_BASE_URL
+        fromService:
+          type: web
+          name: happy-homes-backend
+          property: host
+
+# No database needed - using SQLite
+

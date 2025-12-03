@@ -68,6 +68,7 @@ const Sidebar: React.FC = () => {
           <li><Link to="/admin-faq" onClick={handleLinkClick}>Manage FAQs</Link></li>
           <li><Link to="/admin-service-fee" onClick={handleLinkClick}>Service Fee</Link></li>
           <li><Link to="/admin-bulletin" onClick={handleLinkClick}>Bulletin Board</Link></li>
+          <li><Link to="/admin-maintenance-requests" onClick={handleLinkClick}>Maintenance Requests</Link></li>
         </ul>
       </aside>
     </>

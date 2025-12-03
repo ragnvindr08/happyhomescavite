@@ -8,26 +8,6 @@ import API_URL from "../utils/config";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
-interface VisitorType {
-  id: number;
-  name: string;
-  gmail: string | null;
-  contact_number?: string | null; // <-- optional contact number
-  reason: string;
-  time_in: string | null;
-  time_out: string | null;
-  status: "pending" | "approved" | "declined";
-  resident: {
-    pin: string | null;
-    user: {
-      username: string;
-      first_name: string;
-      last_name: string;
-      email: string;
-    };
-  };
-}
-
 interface UserProfile {
   username: string;
   first_name: string;
@@ -40,6 +20,7 @@ interface VisitorRequest {
   visitor_name: string;
   visitor_email: string;
   visitor_contact_number: string;
+  vehicle_plate_number?: string | null;
   reason?: string;
   one_time_pin?: string | null;
   visit_date: string;
@@ -51,16 +32,13 @@ interface VisitorRequest {
   is_valid?: boolean;
 }
 
-const VISITORS_API = "http://127.0.0.1:8000/api/visitor/";
 const PROFILE_API = "http://127.0.0.1:8000/api/profile/";
 const RESIDENT_PIN_API = "http://127.0.0.1:8000/api/resident-pin/my/";
 const VISITOR_REQUESTS_API = `${API_URL}/visitor-requests/`;
 
 const ResidentDashboard: React.FC = () => {
-  const [visitors, setVisitors] = useState<VisitorType[]>([]);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [residentPin, setResidentPin] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   
   // Visitor Request states
@@ -70,6 +48,7 @@ const ResidentDashboard: React.FC = () => {
     visitor_name: '',
     visitor_email: '',
     visitor_contact_number: '',
+    vehicle_plate_number: '',
     reason: '',
     visit_date: '',
     visit_end_date: '',
@@ -109,25 +88,7 @@ const ResidentDashboard: React.FC = () => {
     }
   };
 
-  // ---------------- Fetch visitors ----------------
-  const fetchVisitors = async () => {
-    setLoading(true);
-    try {
-      const res = await axios.get<VisitorType[]>(VISITORS_API, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setVisitors(res.data);
-    } catch (err) {
-      console.error("Failed to fetch visitors:", err);
-      setMessage(
-        "❌ Failed to fetch visitors. Make sure backend is running and token is valid."
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // ---------------- Fetch visitor requests ----------------  
+  // ---------------- Fetch visitor requests ----------------
   const fetchVisitorRequests = async () => {
     try {
       const res = await axios.get<VisitorRequest[]>(VISITOR_REQUESTS_API, {
@@ -142,73 +103,34 @@ const ResidentDashboard: React.FC = () => {
   useEffect(() => {
     fetchProfile();
     fetchResidentPin();
-    fetchVisitors();
     fetchVisitorRequests();
 
     const interval = setInterval(() => {
       fetchProfile();
       fetchResidentPin();
-      fetchVisitors();
       fetchVisitorRequests();
     }, 15000); // refresh every 15s
 
     return () => clearInterval(interval);
   }, []);
 
-  // ---------------- Approve / Decline / Delete ----------------
-  const handleApprove = async (id: number) => {
-    try {
-      await axios.patch(
-        `${VISITORS_API}${id}/`,
-        { status: "approved" },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      setVisitors((prev) =>
-        prev.map((v) => (v.id === id ? { ...v, status: "approved" } : v))
-      );
-    } catch (err) {
-      console.error(err);
-      setMessage("❌ Failed to approve visitor");
-    }
-  };
-
-  const handleDecline = async (id: number) => {
-    try {
-      await axios.patch(
-        `${VISITORS_API}${id}/`,
-        { status: "declined" },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      setVisitors((prev) =>
-        prev.map((v) => (v.id === id ? { ...v, status: "declined" } : v))
-      );
-    } catch (err) {
-      console.error(err);
-      setMessage("❌ Failed to decline visitor");
-    }
-  };
-
-  const handleDelete = async (id: number) => {
-    if (!window.confirm("Are you sure you want to delete this visitor?")) return;
-
-    try {
-      await axios.delete(`${VISITORS_API}${id}/`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setVisitors((prev) => prev.filter((v) => v.id !== id));
-    } catch (err) {
-      console.error(err);
-      setMessage("❌ Failed to delete visitor");
-    }
-  };
-
-  // ---------------- Visitor Request Handlers ----------------  
+  // ---------------- Visitor Request Handlers ----------------
   const handleRequestInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setRequestFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    
+    // For contact number, only allow numeric input and limit to 10 digits
+    if (name === 'visitor_contact_number') {
+      const numericValue = value.replace(/\D/g, '').slice(0, 10);
+      setRequestFormData(prev => ({
+        ...prev,
+        [name]: numericValue
+      }));
+    } else {
+      setRequestFormData(prev => ({
+        ...prev,
+        [name]: value
+      }));
+    }
   };
 
   const handleCreateRequest = async (e: React.FormEvent) => {
@@ -272,6 +194,7 @@ const ResidentDashboard: React.FC = () => {
         visitor_name: '',
         visitor_email: '',
         visitor_contact_number: '',
+        vehicle_plate_number: '',
         reason: '',
         visit_date: '',
         visit_end_date: '',
@@ -315,18 +238,6 @@ const ResidentDashboard: React.FC = () => {
       const errorMsg = err.response?.data?.error || err.response?.data?.detail || 'Failed to delete visitor request';
       toast.error(errorMsg);
     }
-  };
-
-  // ---------------- Format time to 12-hour ----------------  
-  const formatTime = (time: string | null) => {
-    if (!time) return "-";
-    const date = new Date(time);
-    if (isNaN(date.getTime())) return "-";
-    let hours = date.getHours();
-    const minutes = date.getMinutes().toString().padStart(2, "0");
-    const ampm = hours >= 12 ? "PM" : "AM";
-    hours = hours % 12 || 12;
-    return `${hours}:${minutes} ${ampm}`;
   };
 
   const getStatusBadge = (status: string) => {
@@ -442,6 +353,23 @@ const ResidentDashboard: React.FC = () => {
                     name="visitor_contact_number"
                     value={requestFormData.visitor_contact_number}
                     onChange={handleRequestInputChange}
+                    maxLength={10}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    placeholder="10 digits"
+                    style={{ width: '100%', padding: '10px', borderRadius: '4px', border: '1px solid #ddd' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
+                    Vehicle Plate Number (if applicable)
+                  </label>
+                  <input
+                    type="text"
+                    name="vehicle_plate_number"
+                    value={requestFormData.vehicle_plate_number}
+                    onChange={handleRequestInputChange}
+                    placeholder="Optional"
                     style={{ width: '100%', padding: '10px', borderRadius: '4px', border: '1px solid #ddd' }}
                   />
                 </div>
@@ -610,6 +538,9 @@ const ResidentDashboard: React.FC = () => {
                       )}
                     </p>
                     <p><strong>Time:</strong> {req.visit_start_time} - {req.visit_end_time}</p>
+                    {req.vehicle_plate_number && (
+                      <p><strong>Vehicle Plate:</strong> {req.vehicle_plate_number}</p>
+                    )}
                   </div>
                   {req.reason && <p><strong>Reason:</strong> {req.reason}</p>}
                   {req.one_time_pin && req.status === 'approved' && (
@@ -638,65 +569,6 @@ const ResidentDashboard: React.FC = () => {
           )}
             </div>
 
-            {/* Legacy Visitor Requests Section */}
-            <div>
-              <h2>Visitor Requests (Legacy System)</h2>
-
-              {loading ? (
-                <p>Loading visitors...</p>
-              ) : visitors.length === 0 ? (
-                <p>No visitor requests.</p>
-              ) : (
-                <div className="visitor-cards">
-                  {visitors.map((v) => (
-                    <div key={v.id} className="visitor-card">
-                      <p className="font-semibold">Name: {v.name}</p>
-                      <p>Gmail: {v.gmail || v.resident?.user?.email || "-"}</p>
-                      {v.contact_number && <p>Contact: {v.contact_number}</p>} {/* Display contact if available */}
-                      <p>Time In: {formatTime(v.time_in)}</p>
-                      <p>Time Out: {formatTime(v.time_out)}</p>
-
-                      <p
-                        className={`status ${
-                          v.status === "approved"
-                            ? "approved"
-                            : v.status === "declined"
-                            ? "declined"
-                            : "pending"
-                        }`}
-                      >
-                        Status: {v.status.toUpperCase()}
-                      </p>
-
-                      <div className="flex gap-2 mt-2">
-                        {v.status === "pending" && (
-                          <>
-                            <button
-                              onClick={() => handleApprove(v.id)}
-                              className="bg-green-500"
-                            >
-                              Approve
-                            </button>
-                            <button
-                              onClick={() => handleDecline(v.id)}
-                              className="bg-red-500"
-                            >
-                              Decline
-                            </button>
-                          </>
-                        )}
-                        <button
-                          onClick={() => handleDelete(v.id)}
-                          className="bg-gray-500"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                    ))}
-                  </div>
-                )}
-            </div>
           </div>
         </div>
       </div>

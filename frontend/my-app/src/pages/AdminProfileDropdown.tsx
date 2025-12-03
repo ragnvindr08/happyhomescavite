@@ -27,7 +27,9 @@ const AdminProfileDropdown: React.FC = () => {
   });
   const [passwordError, setPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState('');
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const profileButtonRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const token = getToken();
 
@@ -42,9 +44,25 @@ const AdminProfileDropdown: React.FC = () => {
       })
       .catch(err => {
         console.error('Error fetching profile:', err);
+        // Handle 401 Unauthorized - token expired or invalid
+        if (err.response?.status === 401) {
+          logout();
+          navigate('/login');
+        }
       });
     }
-  }, [token]);
+  }, [token, navigate]);
+
+  // Calculate dropdown position when it opens
+  useEffect(() => {
+    if (showDropdown && profileButtonRef.current) {
+      const rect = profileButtonRef.current.getBoundingClientRect();
+      setDropdownPosition({
+        top: rect.bottom + 8,
+        left: rect.left
+      });
+    }
+  }, [showDropdown]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -53,9 +71,11 @@ const AdminProfileDropdown: React.FC = () => {
         setShowDropdown(false);
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
+    if (showDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [showDropdown]);
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -117,6 +137,7 @@ const AdminProfileDropdown: React.FC = () => {
   return (
     <div className="admin-profile-dropdown" ref={dropdownRef}>
       <div 
+        ref={profileButtonRef}
         className="admin-profile-picture"
         onClick={() => setShowDropdown(!showDropdown)}
         aria-label="Profile menu"
@@ -133,7 +154,13 @@ const AdminProfileDropdown: React.FC = () => {
       </div>
 
       {showDropdown && (
-        <div className="admin-profile-menu">
+        <div 
+          className="admin-profile-menu"
+          style={{
+            top: `${dropdownPosition.top}px`,
+            left: `${dropdownPosition.left}px`
+          }}
+        >
           <div className="profile-menu-header">
             <img 
               src={profileImageUrl} 
