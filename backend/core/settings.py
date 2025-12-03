@@ -77,7 +77,7 @@ CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
 
 # Get frontend URL from environment variable (for reference)
-FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
+FRONTEND_URL = os.environ.get('FRONTEND_URL', 'https://happy-homes-frontend.onrender.com')
 
 # CORS allowed origins (not needed when CORS_ALLOW_ALL_ORIGINS = True, but kept for reference)
 CORS_ALLOWED_ORIGINS = [
